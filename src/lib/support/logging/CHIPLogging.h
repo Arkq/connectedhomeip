@@ -113,10 +113,11 @@ void SetLogFilter(uint8_t category);
 #if CHIP_PW_TOKENIZER_LOGGING
 #define ChipLogError(MOD, MSG, ...)                                                                                                \
     PW_TOKENIZE_TO_GLOBAL_HANDLER_WITH_PAYLOAD(                                                                                    \
-        (pw_tokenizer_Payload)((chip::Logging::kLogCategory_Error << 8) | chip::Logging::kLogModule_##MOD), MSG, __VA_ARGS__)
+        (pw_tokenizer_Payload) ((chip::Logging::kLogCategory_Error << 8) | chip::Logging::kLogModule_##MOD), MSG, __VA_ARGS__)
 #else
 #define ChipLogError(MOD, MSG, ...)                                                                                                \
-    chip::Logging::Log(chip::Logging::kLogModule_##MOD, chip::Logging::kLogCategory_Error, MSG, ##__VA_ARGS__)
+    chip::Logging::Log(chip::Logging::kLogModule_##MOD, chip::Logging::kLogCategory_Error, "%s:%d " MSG, __FILE__, __LINE__,       \
+                       ##__VA_ARGS__)
 #endif
 #endif
 #else
@@ -140,10 +141,11 @@ void SetLogFilter(uint8_t category);
 #if CHIP_PW_TOKENIZER_LOGGING
 #define ChipLogProgress(MOD, MSG, ...)                                                                                             \
     PW_TOKENIZE_TO_GLOBAL_HANDLER_WITH_PAYLOAD(                                                                                    \
-        (pw_tokenizer_Payload)((chip::Logging::kLogCategory_Progress << 8) | chip::Logging::kLogModule_##MOD), MSG, __VA_ARGS__)
+        (pw_tokenizer_Payload) ((chip::Logging::kLogCategory_Progress << 8) | chip::Logging::kLogModule_##MOD), MSG, __VA_ARGS__)
 #else
 #define ChipLogProgress(MOD, MSG, ...)                                                                                             \
-    chip::Logging::Log(chip::Logging::kLogModule_##MOD, chip::Logging::kLogCategory_Progress, MSG, ##__VA_ARGS__)
+    chip::Logging::Log(chip::Logging::kLogModule_##MOD, chip::Logging::kLogCategory_Progress, "%s:%d " MSG, __FILE__, __LINE__,    \
+                       ##__VA_ARGS__)
 #endif
 #endif
 #else
@@ -167,10 +169,11 @@ void SetLogFilter(uint8_t category);
 #if CHIP_PW_TOKENIZER_LOGGING
 #define ChipLogDetail(MOD, MSG, ...)                                                                                               \
     PW_TOKENIZE_TO_GLOBAL_HANDLER_WITH_PAYLOAD(                                                                                    \
-        (pw_tokenizer_Payload)((chip::Logging::kLogCategory_Detail << 8) | chip::Logging::kLogModule_##MOD), MSG, __VA_ARGS__)
+        (pw_tokenizer_Payload) ((chip::Logging::kLogCategory_Detail << 8) | chip::Logging::kLogModule_##MOD), MSG, __VA_ARGS__)
 #else
 #define ChipLogDetail(MOD, MSG, ...)                                                                                               \
-    chip::Logging::Log(chip::Logging::kLogModule_##MOD, chip::Logging::kLogCategory_Detail, MSG, ##__VA_ARGS__)
+    chip::Logging::Log(chip::Logging::kLogModule_##MOD, chip::Logging::kLogCategory_Detail, "%s:%d " MSG, __FILE__, __LINE__,      \
+                       ##__VA_ARGS__)
 #endif
 #endif
 #else
@@ -203,11 +206,12 @@ void SetLogFilter(uint8_t category);
 #if CHIP_PW_TOKENIZER_LOGGING
 #define ChipLogAutomation(MSG, ...)                                                                                                \
     PW_TOKENIZE_TO_GLOBAL_HANDLER_WITH_PAYLOAD(                                                                                    \
-        (pw_tokenizer_Payload)((chip::Logging::kLogModule_Automation << 8) | chip::Logging::kLogModule_Automation), MSG,           \
+        (pw_tokenizer_Payload) ((chip::Logging::kLogModule_Automation << 8) | chip::Logging::kLogModule_Automation), MSG,          \
         __VA_ARGS__)
 #else
 #define ChipLogAutomation(MSG, ...)                                                                                                \
-    chip::Logging::Log(chip::Logging::kLogModule_Automation, chip::Logging::kLogCategory_Automation, MSG, ##__VA_ARGS__)
+    chip::Logging::Log(chip::Logging::kLogModule_Automation, chip::Logging::kLogCategory_Automation, "%s:%d " MSG, __FILE__,       \
+                       __LINE__, ##__VA_ARGS__)
 #endif
 #endif
 #else
