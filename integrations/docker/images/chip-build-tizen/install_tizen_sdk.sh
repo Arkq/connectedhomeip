@@ -1,0 +1,1 @@
+./scripts/setup/tizen/install_tizen_sdk.sh
