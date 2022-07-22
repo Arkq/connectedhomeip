@@ -80,18 +80,6 @@ function warning() {
 }
 
 # ------------------------------------------------------------------------------
-# The function checks if the selected version is available.
-function check_version_tizen() {
-    url="http://download.tizen.org/sdk/tizenstudio/official/binary/mobile-$TIZEN_VERSION-core-add-ons_0.0.262_ubuntu-64.zip"
-    if ! wget --quiet --spider "$url"; then
-        error "Tizen version: $TIZEN_VERSION not exist"
-        return 1
-    fi
-    echo "Tizen version: $TIZEN_VERSION"
-
-}
-
-# ------------------------------------------------------------------------------
 # Show dependencies
 function show_dependencies() {
     warning "Need dependencies for use this script installation SDK:
@@ -106,25 +94,8 @@ function show_dependencies() {
 }
 
 # ------------------------------------------------------------------------------
-# Checking dependencies needed to install the tizen platform
-function check_dependencies() {
-    for pkg in 'unzip' 'wget' 'unrmp'; do
-        if ! command -v $pkg &>/dev/null; then
-            warning "Not found $pkg"
-            dep_lost=1
-        fi
-    done
-    if [[ $dep_lost ]]; then
-        echo "[HINT]: On Ubuntu-like distro run: sudo apt install $DEPENDENCIES"
-        error "You need install dependencies before"
-        return 1
-    fi
-
-}
-
-# ------------------------------------------------------------------------------
-#Helper masive download
-#Usage: download "--options_wget url_dir_package" ${package_array[@]
+# Function helper massive download
+# Usage: download "--options_wget url_dir_package" ${package_array[@]}
 function download() {
     echo "$COLOR_BLUE"
 
@@ -137,19 +108,6 @@ function download() {
     done
 
     echo -n "$COLOR_NONE"
-}
-
-# ------------------------------------------------------------------------------
-# Information on necessary environment variables
-function show_env() {
-    warning "You must add the appropriate environment variables before proceeding with matter."
-    echo "${COLOR_YELLOW}"
-    echo "export TIZEN_VESRSION=\"$TIZEN_VERSION\""
-    echo "export TIZEN_SDK_ROOT=\"$(realpath $TIZEN_SDK_ROOT)\""
-    echo "export TIZEN_SDK_TOOLCHAIN=\$TIZEN_SDK_ROOT/tools/arm-linux-gnueabi-gcc-9.2\""
-    echo "export TIZEN_SDK_SYSROOT=\"\$TIZEN_SDK_ROOT/platforms/tizen-6.0/mobile/rootstraps/mobile-6.0-device.core\""
-    echo "export PATH=\"\$TIZEN_SDK_ROOT/tools/ide/bin:\$TIZEN_SDK_ROOT/tools:\$PATH\""
-    echo -n "${COLOR_NONE}"
 }
 
 # ------------------------------------------------------------------------------
@@ -296,7 +254,7 @@ function install_tizen_sdk() {
     unrpm *.rpm
     cp -rf lib usr $TIZEN_SDK_SYSROOT
 
-    # Make symbolic links relative
+    # Make symbolic links relative TODO:Test if it's working
     find "$TIZEN_SDK_SYSROOT"/usr/lib -maxdepth 1 -type l | while IFS= read -r -d '' pkg; do
         ln -sf "$(basename "$(readlink "$pkg")")" "$pkg"
     done
@@ -306,7 +264,14 @@ function install_tizen_sdk() {
     # Cleanup remove tmp directory
     rm -rf "${TMP_DIR:?}"
 
-    show_env
+    warning "You must add the appropriate environment variables before proceeding with matter."
+    echo "${COLOR_YELLOW}"
+    echo "export TIZEN_VESRSION=\"$TIZEN_VERSION\""
+    echo "export TIZEN_SDK_ROOT=\"$(realpath $TIZEN_SDK_ROOT)\""
+    echo "export TIZEN_SDK_TOOLCHAIN=\$TIZEN_SDK_ROOT/tools/arm-linux-gnueabi-gcc-9.2\""
+    echo "export TIZEN_SDK_SYSROOT=\"\$TIZEN_SDK_ROOT/platforms/tizen-6.0/mobile/rootstraps/mobile-6.0-device.core\""
+    echo "export PATH=\"\$TIZEN_SDK_ROOT/tools/ide/bin:\$TIZEN_SDK_ROOT/tools:\$PATH\""
+    echo -n "${COLOR_NONE}"
 
 }
 
@@ -351,8 +316,17 @@ while (($#)); do
     shift
 done
 
-check_version_tizen || exit
+# ------------------------------------------------------------------------------
+# Checks if the selected version is available.
+url="http://download.tizen.org/sdk/tizenstudio/official/binary/mobile-$TIZEN_VERSION-core-add-ons_0.0.262_ubuntu-64.zip"
+if ! wget --quiet --spider "$url"; then
+    error "Tizen version: $TIZEN_VERSION not exist"
+    exit 1
+fi
+echo "Tizen version: $TIZEN_VERSION"
 
+# ------------------------------------------------------------------------------
+# Checks if the user need install dependencies
 if [[ $dependencies == 'true' ]]; then
     if ! install_dependencies; then
         error "Cannot install dependencies, please use this script as sudo user or root. Use --help"
@@ -363,8 +337,22 @@ else
     show_dependencies
 fi
 
-#Installation Tizen SDK
-check_dependencies || exit
+# ------------------------------------------------------------------------------
+# Checking dependencies needed to install the tizen platform
+for pkg in 'unzip' 'wget' 'unrmp'; do
+    if ! command -v $pkg &>/dev/null; then
+        warning "Not found $pkg"
+        dep_lost=1
+    fi
+done
+if [[ $dep_lost ]]; then
+    echo "[HINT]: On Ubuntu-like distro run: sudo apt install $DEPENDENCIES"
+    error "You need install dependencies before"
+    exit 1
+fi
+
+# ------------------------------------------------------------------------------
+# Installation Tizen SDK
 if ! install_tizen_sdk; then
     rm -rf "${TMP_DIR:?}"
     exit 1
