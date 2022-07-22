@@ -16,7 +16,7 @@
 #    limitations under the License.
 #
 
-set +ex
+set -ex
 
 #Options
 TIZEN_SDK_ROOT=/opt/tizen-sdk
@@ -24,7 +24,7 @@ TIZEN_SDK_DATA_PATH=~/tizen-sdk-data
 TIZEN_VERSION=6.0
 
 SCRIPT_NAME=$(basename "$(readlink -f "$0")")
-SCRIPT_DIR=$(dirname -- "$(readlink -f "${BASH_SOURCE}")")
+SCRIPT_DIR=$(dirname -- "$(readlink -f "${BASH_SOURCE:?}")")
 
 DEPENDENCIES="cpio=2.13+dfsg-* obs-build=20180831-3ubuntu1 openjdk-8-jre-headless zip wget rpm"
 TMP_DIR=$(mktemp -d)
@@ -61,14 +61,20 @@ function show_help() {
     "
 }
 
+# ------------------------------------------------------------------------------
+# Error print function
 function error() {
     echo "${COLOR_RED}[ERROR]: $1${COLOR_NONE}"
 }
 
+# ------------------------------------------------------------------------------
+# Info print function
 function info() {
     echo "${COLOR_GREEN}$1${COLOR_NONE}"
 }
 
+# ------------------------------------------------------------------------------
+# Warning print function
 function warning() {
     echo "${COLOR_YELLOW}[WARNING]: $1${COLOR_NONE}"
 }
@@ -291,8 +297,8 @@ function install_tizen_sdk() {
     cp -rf lib usr $TIZEN_SDK_SYSROOT
 
     # Make symbolic links relative
-    for LNK in $(find $TIZEN_SDK_SYSROOT/usr/lib -maxdepth 1 -type l); do
-        ln -sf $(basename $(readlink "$LNK")) "$LNK"
+    find "$TIZEN_SDK_SYSROOT"/usr/lib -maxdepth 1 -type l | while IFS= read -r -d '' pkg; do
+        ln -sf "$(basename "$(readlink "$pkg")")" "$pkg"
     done
     ln -sf ../../lib/libcap.so.2 $TIZEN_SDK_SYSROOT/usr/lib/libcap.so
     ln -sf openssl1.1.pc $TIZEN_SDK_SYSROOT/usr/lib/pkgconfig/openssl.pc
