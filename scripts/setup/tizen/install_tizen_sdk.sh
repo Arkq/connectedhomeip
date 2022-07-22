@@ -16,7 +16,7 @@
 #    limitations under the License.
 #
 
-set -ex
+set -e
 
 #Options
 TIZEN_SDK_ROOT=/opt/tizen-sdk
@@ -26,7 +26,7 @@ TIZEN_VERSION=6.0
 SCRIPT_NAME=$(basename "$(readlink -f "$0")")
 SCRIPT_DIR=$(dirname -- "$(readlink -f "${BASH_SOURCE:?}")")
 
-DEPENDENCIES="cpio=2.13+dfsg-* obs-build=20180831-3ubuntu1 openjdk-8-jre-headless zip wget rpm"
+DEPENDENCIES="cpio obs-build openjdk-8-jre-headless zip wget rpm"
 TMP_DIR=$(mktemp -d)
 
 SECRET_TOOL=0
@@ -47,18 +47,17 @@ function show_help() {
     echo "Usage: $SCRIPT_NAME [ options .. ]"
     echo "Example usage: $SCRIPT_NAME --tizen-sdk-path ~/tizen-sdk --install-dependencies --tizen-version 6.0"
     echo
-    echo "Options:
-    --help                     Display this information
-    --tizen-sdk-path           Set directory where Tizen will be installed. Default is $TIZEN_SDK_ROOT
-    --tizen-sdk-data-path      Set directory where Tizen have data. Default is $TIZEN_SDK_DATA_PATH
-    --install-dependencies     This options install all dependencies.
-    --tizen-version            Select Tizen version. Default is $TIZEN_VERSION
-    --override-secret-tool     Without password manager circumvents the requirement of having functional D-Bus Secrets service"
-    echo "NOTE:
-    The script should run fully with ubuntu 20.0.4 LTS. For ubuntu 22.04 LTS you have to manually
-    install all needed dependencies. Use the script specifying --tizen-sdk-path with or
-    without --tizen-version. The script will only install the tizen platform for Matter.
-    "
+    echo "Options:"
+    echo "  --help                     Display this information"
+    echo "  --tizen-sdk-path           Set directory where Tizen will be installed. Default is $TIZEN_SDK_ROOT"
+    echo "  --tizen-sdk-data-path      Set directory where Tizen have data. Default is $TIZEN_SDK_DATA_PATH"
+    echo "  --install-dependencies     This options install all dependencies."
+    echo "  --tizen-version            Select Tizen version. Default is $TIZEN_VERSION"
+    echo "  --override-secret-tool     Without password manager circumvents the requirement of having functional D-Bus Secrets service"
+    echo "NOTE:"
+    echo "The script should run fully with ubuntu 20.0.4 LTS. For ubuntu 22.04 LTS you have to manually"
+    echo "install all needed dependencies. Use the script specifying --tizen-sdk-path with or"
+    echo "without --tizen-version. The script will only install the tizen platform for Matter."
 }
 
 # ------------------------------------------------------------------------------
@@ -86,7 +85,7 @@ function show_dependencies() {
         cpio
         unzip
         wget
-        unrmp
+        unrpm
     "
     warning "Need dependencies for Tizen SDK:
         JAVA JRE >=8.0
@@ -103,7 +102,7 @@ function download() {
         if [[ "$1" =~ .*"--no-parent".* ]]; then
             wget $1 --progress=dot:mega -A $package
         else
-            wget --progress=dot:giga $1$package
+            wget --progress=dot:giga -A $1$package
         fi
     done
 
@@ -189,8 +188,8 @@ function install_tizen_sdk() {
     # Base sysroot
     url="http://download.tizen.org/sdk/tizenstudio/official/binary/"
     pkg_arr=(
-        "mobile-$TIZEN_VERSION-core-add-ons_0.0.262_ubuntu-64.zip"
-        "mobile-$TIZEN_VERSION-rs-device.core_0.0.123_ubuntu-64.zip")
+        "mobile-$TIZEN_VERSION-core-add-ons_*_ubuntu-64.zip"
+        "mobile-$TIZEN_VERSION-rs-device.core_*_ubuntu-64.zip")
     download "$url" "${pkg_arr[@]}"
 
     # Base packages
@@ -318,8 +317,8 @@ done
 
 # ------------------------------------------------------------------------------
 # Checks if the selected version is available.
-url="http://download.tizen.org/sdk/tizenstudio/official/binary/mobile-$TIZEN_VERSION-core-add-ons_0.0.262_ubuntu-64.zip"
-if ! wget --quiet --spider "$url"; then
+url="http://download.tizen.org/sdk/tizenstudio/official/binary/mobile-$TIZEN_VERSION-core-add-ons_*_ubuntu-64.zip"
+if ! wget --quiet --spider -A "$url"; then
     error "Tizen version: $TIZEN_VERSION not exist"
     exit 1
 fi
@@ -339,7 +338,7 @@ fi
 
 # ------------------------------------------------------------------------------
 # Checking dependencies needed to install the tizen platform
-for pkg in 'unzip' 'wget' 'unrmp'; do
+for pkg in 'unzip' 'wget' 'unrpm'; do
     if ! command -v $pkg &>/dev/null; then
         warning "Not found $pkg"
         dep_lost=1
