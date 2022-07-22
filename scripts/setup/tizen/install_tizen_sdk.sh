@@ -16,7 +16,7 @@
 #    limitations under the License.
 #
 
-set -ex
+set -e
 
 #Options
 TIZEN_SDK_ROOT=/opt/tizen-sdk
@@ -26,7 +26,7 @@ TIZEN_VERSION=6.0
 SCRIPT_NAME=$(basename "$(readlink -f "$0")")
 SCRIPT_DIR=$(dirname -- "$(readlink -f "${BASH_SOURCE:?}")")
 
-DEPENDENCIES="cpio=2.13+dfsg-* obs-build=20180831-3ubuntu1 openjdk-8-jre-headless zip wget rpm"
+DEPENDENCIES="cpio obs-build openjdk-8-jre-headless zip wget rpm"
 TMP_DIR=$(mktemp -d)
 
 SECRET_TOOL=0
@@ -86,7 +86,7 @@ function show_dependencies() {
         cpio
         unzip
         wget
-        unrmp
+        unrpm
     "
     warning "Need dependencies for Tizen SDK:
         JAVA JRE >=8.0
@@ -339,7 +339,7 @@ fi
 
 # ------------------------------------------------------------------------------
 # Checking dependencies needed to install the tizen platform
-for pkg in 'unzip' 'wget' 'unrmp'; do
+for pkg in 'unzip' 'wget' 'unrpm'; do
     if ! command -v $pkg &>/dev/null; then
         warning "Not found $pkg"
         dep_lost=1
