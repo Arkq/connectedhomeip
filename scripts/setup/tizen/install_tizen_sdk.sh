@@ -47,18 +47,17 @@ function show_help() {
     echo "Usage: $SCRIPT_NAME [ options .. ]"
     echo "Example usage: $SCRIPT_NAME --tizen-sdk-path ~/tizen-sdk --install-dependencies --tizen-version 6.0"
     echo
-    echo "Options:
-    --help                     Display this information
-    --tizen-sdk-path           Set directory where Tizen will be installed. Default is $TIZEN_SDK_ROOT
-    --tizen-sdk-data-path      Set directory where Tizen have data. Default is $TIZEN_SDK_DATA_PATH
-    --install-dependencies     This options install all dependencies.
-    --tizen-version            Select Tizen version. Default is $TIZEN_VERSION
-    --override-secret-tool     Without password manager circumvents the requirement of having functional D-Bus Secrets service"
-    echo "NOTE:
-    The script should run fully with ubuntu 20.0.4 LTS. For ubuntu 22.04 LTS you have to manually
-    install all needed dependencies. Use the script specifying --tizen-sdk-path with or
-    without --tizen-version. The script will only install the tizen platform for Matter.
-    "
+    echo "Options:"
+    echo "  --help                     Display this information"
+    echo "  --tizen-sdk-path           Set directory where Tizen will be installed. Default is $TIZEN_SDK_ROOT"
+    echo "  --tizen-sdk-data-path      Set directory where Tizen have data. Default is $TIZEN_SDK_DATA_PATH"
+    echo "  --install-dependencies     This options install all dependencies."
+    echo "  --tizen-version            Select Tizen version. Default is $TIZEN_VERSION"
+    echo "  --override-secret-tool     Without password manager circumvents the requirement of having functional D-Bus Secrets service"
+    echo "NOTE:"
+    echo "The script should run fully with ubuntu 20.0.4 LTS. For ubuntu 22.04 LTS you have to manually"
+    echo "install all needed dependencies. Use the script specifying --tizen-sdk-path with or"
+    echo "without --tizen-version. The script will only install the tizen platform for Matter."
 }
 
 # ------------------------------------------------------------------------------
@@ -315,15 +314,6 @@ while (($#)); do
     esac
     shift
 done
-
-# ------------------------------------------------------------------------------
-# Checks if the selected version is available.
-url="http://download.tizen.org/sdk/tizenstudio/official/binary/mobile-$TIZEN_VERSION-core-add-ons_0.0.262_ubuntu-64.zip"
-if ! wget --quiet --spider "$url"; then
-    error "Tizen version: $TIZEN_VERSION not exist"
-    exit 1
-fi
-echo "Tizen version: $TIZEN_VERSION"
 
 # ------------------------------------------------------------------------------
 # Checks if the user need install dependencies
