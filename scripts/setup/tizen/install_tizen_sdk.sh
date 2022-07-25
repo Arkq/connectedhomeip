@@ -102,7 +102,7 @@ function download() {
         if [[ "$1" =~ .*"--no-parent".* ]]; then
             wget $1 --progress=dot:mega -A $package
         else
-            wget --progress=dot:giga $1$package
+            wget --progress=dot:giga -A $1$package
         fi
     done
 
@@ -188,8 +188,8 @@ function install_tizen_sdk() {
     # Base sysroot
     url="http://download.tizen.org/sdk/tizenstudio/official/binary/"
     pkg_arr=(
-        "mobile-$TIZEN_VERSION-core-add-ons_0.0.262_ubuntu-64.zip"
-        "mobile-$TIZEN_VERSION-rs-device.core_0.0.123_ubuntu-64.zip")
+        "mobile-$TIZEN_VERSION-core-add-ons_*_ubuntu-64.zip"
+        "mobile-$TIZEN_VERSION-rs-device.core_*_ubuntu-64.zip")
     download "$url" "${pkg_arr[@]}"
 
     # Base packages
@@ -314,6 +314,15 @@ while (($#)); do
     esac
     shift
 done
+
+# ------------------------------------------------------------------------------
+# Checks if the selected version is available.
+url="http://download.tizen.org/sdk/tizenstudio/official/binary/mobile-$TIZEN_VERSION-core-add-ons_*_ubuntu-64.zip"
+if ! wget --quiet --spider -A "$url"; then
+    error "Tizen version: $TIZEN_VERSION not exist"
+    exit 1
+fi
+echo "Tizen version: $TIZEN_VERSION"
 
 # ------------------------------------------------------------------------------
 # Checks if the user need install dependencies
