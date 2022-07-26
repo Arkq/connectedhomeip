@@ -21,27 +21,34 @@ RUN set -x \
     cpio \
     obs-build \
     openjdk-8-jre-headless \
+    wget \
     zip \
     # Cleanup
     && apt-get clean \
-    && rm -rf /var/lib/apt/lists/* \
+    && rm -rf /var/lib/apt/lists \
+    && : # last line
+
+# ------------------------------------------------------------------------------
+# Install tizen
+ENV TIZEN_VERSION 6.0
+ENV TIZEN_SDK_ROOT /opt/tizen-sdk
+
+COPY tizen-sdk-installer /tmp/tizen-sdk-installer
+RUN set -x \
+    && bash /tmp/tizen-sdk-installer/install.sh \
+    --tizen-sdk-path $TIZEN_SDK_ROOT \
+    --tizen-sdk-data-path $USER_HOME/tizen-sdk-data \
+    --tizen-version $TIZEN_VERSION  \
+    --override-secret-tool \
+    # Cleanup
+    && rm -rf /tmp/tizen-sdk-installer \
     && : # last line
 
 # ------------------------------------------------------------------------------
 # Set environment
-ENV TIZEN_SDK_ROOT /opt/tizen-sdk
-ENV TIZEN_VERSION 6.0
-ENV PATH="$TIZEN_SDK_ROOT/tools/ide/bin:$TIZEN_SDK_ROOT/tools:$PATH"
 ENV TIZEN_SDK_TOOLCHAIN $TIZEN_SDK_ROOT/tools/arm-linux-gnueabi-gcc-9.2
-ENV PATH="$TIZEN_SDK_TOOLCHAIN/bin:$PATH"
-ENV TIZEN_SDK_SYSROOT \
-    $TIZEN_SDK_ROOT/platforms/tizen-$TIZEN_VERSION/mobile/rootstraps/mobile-$TIZEN_VERSION-device.core
-
-# ------------------------------------------------------------------------------
-# Build tizen
-COPY install_tizen_sdk.sh /user/bin/
-RUN  install_tizen_sdk.sh --tizen-sdk-path $TIZEN_SDK_ROOT --tizen-sdk-data-path $USER_HOME/tizen-sdk-data
-COPY secret-tool.py $TIZEN_SDK_ROOT/tools/certificate-encryptor/secret-tool
+ENV TIZEN_SDK_SYSROOT $TIZEN_SDK_ROOT/platforms/tizen-$TIZEN_VERSION/mobile/rootstraps/mobile-$TIZEN_VERSION-device.core
+ENV PATH="$TIZEN_SDK_TOOLCHAIN/bin:$TIZEN_SDK_ROOT/tools/ide/bin:$TIZEN_SDK_ROOT/tools:$PATH"
 
 # ------------------------------------------------------------------------------
 # Switch to the non-root user
