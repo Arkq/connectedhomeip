@@ -131,39 +131,39 @@ function install_tizen_sdk() {
     cd "$TMP_DIR" || return
 
     # Download
-    url="http://download.tizen.org/sdk/tizenstudio/official/binary/"
-    pkg_arr=(
+    URL="http://download.tizen.org/sdk/tizenstudio/official/binary/"
+    PKG_ARR=(
         'certificate-encryptor_1.0.7_ubuntu-64.zip'
         'certificate-generator_0.1.3_ubuntu-64.zip'
         'new-common-cli_2.5.7_ubuntu-64.zip'
         'new-native-cli_2.5.7_ubuntu-64.zip'
         'sdb_4.2.23_ubuntu-64.zip')
-    download "$url" "${pkg_arr[@]}"
+    download "$URL" "${PKG_ARR[@]}"
 
     # Get toolchain
     info "Get toolchain"
 
     # Download
-    url="http://download.tizen.org/sdk/tizenstudio/official/binary/"
-    pkg_arr=(
+    URL="http://download.tizen.org/sdk/tizenstudio/official/binary/"
+    PKG_ARR=(
         "cross-arm-gcc-9.2_0.1.9_ubuntu-64.zip"
         "sbi-toolchain-gcc-9.2.cpp.app_2.2.16_ubuntu-64.zip")
-    download "$url" "${pkg_arr[@]}"
+    download "$URL" "${PKG_ARR[@]}"
 
     # Get tizen sysroot
     info "Get tizen sysroot"
 
     # Base sysroot
     # Different versions of tizen have different rootstrap versions
-    url="http://download.tizen.org/sdk/tizenstudio/official/binary/"
-    pkg_arr=(
+    URL="http://download.tizen.org/sdk/tizenstudio/official/binary/"
+    PKG_ARR=(
         "mobile-$TIZEN_VERSION-core-add-ons_*_ubuntu-64.zip"
         "mobile-$TIZEN_VERSION-rs-device.core_*_ubuntu-64.zip")
-    download "$url" "${pkg_arr[@]}"
+    download "$URL" "${PKG_ARR[@]}"
 
     # Base packages
-    url="http://download.tizen.org/releases/milestone/tizen/base/latest/repos/standard/packages/armv7l/"
-    pkg_arr=(
+    URL="http://download.tizen.org/releases/milestone/tizen/base/latest/repos/standard/packages/armv7l/"
+    PKG_ARR=(
         'iniparser-*.armv7l.rpm'
         'libblkid-devel-*.armv7l.rpm'
         'libcap-*.armv7l.rpm'
@@ -176,11 +176,11 @@ function install_tizen_sdk() {
         'pcre-devel-*.armv7l.rpm'
         'readline-devel-*.armv7l.rpm'
         'xdgmime-*.armv7l.rpm')
-    download "$url" "${pkg_arr[@]}"
+    download "$URL" "${PKG_ARR[@]}"
 
     # Unified packages
-    url="http://download.tizen.org/releases/milestone/tizen/unified/latest/repos/standard/packages/armv7l/"
-    pkg_arr=(
+    URL="http://download.tizen.org/releases/milestone/tizen/unified/latest/repos/standard/packages/armv7l/"
+    PKG_ARR=(
         'aul-0*.armv7l.rpm'
         'aul-devel-*.armv7l.rpm'
         'bundle-0*.armv7l.rpm'
@@ -204,15 +204,15 @@ function install_tizen_sdk() {
         'pkgmgr-info-*.armv7l.rpm'
         'vconf-compat-*.armv7l.rpm'
         'vconf-internal-keys-devel-*.armv7l.rpm')
-    download "$url" "${pkg_arr[@]}"
+    download "$URL" "${PKG_ARR[@]}"
 
     # Unified packages (snapshots)
-    url="http://download.tizen.org/snapshots/tizen/unified/latest/repos/standard/packages/armv7l/"
-    pkg_arr=(
+    URL="http://download.tizen.org/snapshots/tizen/unified/latest/repos/standard/packages/armv7l/"
+    PKG_ARR=(
         'capi-network-nsd-*.armv7l.rpm'
         'capi-network-thread-*.armv7l.rpm'
         'libnsd-dns-sd-*.armv7l.rpm')
-    download "$url" "${pkg_arr[@]}"
+    download "$URL" "${PKG_ARR[@]}"
 
     # Install all
     info "Installation Tizen SDK [...]"
@@ -236,8 +236,8 @@ function install_tizen_sdk() {
     ln -sf $TIZEN_SDK_DATA_PATH/.tizen-cli-config $TIZEN_SDK_ROOT/tools/.tizen-cli-config
 
     # Make symbolic links relative
-    find "$TIZEN_SDK_SYSROOT"/usr/lib -maxdepth 1 -type l | while IFS= read -r -d '' pkg; do
-        ln -sf "$(basename "$(readlink "$pkg")")" "$pkg"
+    find "$TIZEN_SDK_SYSROOT/usr/lib" -maxdepth 1 -type l | while IFS= read -r LNK; do
+        ln -sf "$(basename "$(readlink "$LNK")")" "$LNK"
     done
     ln -sf ../../lib/libcap.so.2 $TIZEN_SDK_SYSROOT/usr/lib/libcap.so
     ln -sf openssl1.1.pc $TIZEN_SDK_SYSROOT/usr/lib/pkgconfig/openssl.pc
@@ -272,7 +272,7 @@ while (($#)); do
         shift
         ;;
     --install-dependencies)
-        dependencies=true
+        INSTALL_DEPENDENCIES=true
         ;;
     --override-secret-tool)
         SECRET_TOOL=true
@@ -293,7 +293,7 @@ echo "Create tmp directory $TMP_DIR"
 
 # ------------------------------------------------------------------------------
 # Checks if the user need install dependencies
-if [ "$dependencies" = true ]; then
+if [ "$INSTALL_DEPENDENCIES" = true ]; then
     if ! install_dependencies; then
         error "Cannot install dependencies, please use this script as sudo user or root. Use --help"
         show_dependencies
@@ -305,9 +305,9 @@ fi
 
 # ------------------------------------------------------------------------------
 # Checking dependencies needed to install the tizen platform
-for pkg in 'cpio' 'unzip' 'wget' 'unrpm'; do
-    if ! command -v $pkg &>/dev/null; then
-        warning "Not found $pkg"
+for PKG in 'cpio' 'unzip' 'wget' 'unrpm'; do
+    if ! command -v $PKG &>/dev/null; then
+        warning "Not found $PKG"
         dep_lost=1
     fi
 done
