@@ -78,6 +78,14 @@ jobs:
                   mkdir /tmp/cores || true
                   sysctl -w kernel.core_pattern=/tmp/cores/core.%u.%p.%t || true
                   mkdir objdir-clone || true
+
+            - name: Bootstrap cache
+              uses: actions/cache@v3
+              with:
+                  key: ${{ runner.os }}-env-${{ hashFiles('scripts/setup/*') }}
+                  path: |
+                      .environment
+                      build_overrides/pigweed_environment.gni
             - name: Bootstrap
               timeout-minutes: 10
               run: scripts/build/gn_bootstrap.sh
@@ -89,6 +97,7 @@ jobs:
                   path: |
                       .environment/gn_out/.ninja_log
                       .environment/pigweed-venv/*.log
+
             - name: Validate that xml are parsable
               timeout-minutes: 10
               # The sub-items being run here are the same as the input XMLs listed
@@ -322,6 +331,14 @@ jobs:
                   ls -la /usr/local/Cellar/openssl@1.1
                   OPEN_SSL_VERSION=`ls -la /usr/local/Cellar/openssl@1.1 | cat | tail -n1 | awk '{print $NF}'`
                   ln -s /usr/local/Cellar/openssl@1.1/$OPEN_SSL_VERSION/lib/pkgconfig/* .
+
+            - name: Bootstrap cache
+              uses: actions/cache@v3
+              with:
+                  key: ${{ runner.os }}-env-${{ hashFiles('scripts/setup/*') }}
+                  path: |
+                      .environment
+                      build_overrides/pigweed_environment.gni
             - name: Bootstrap
               timeout-minutes: 25
               run: scripts/build/gn_bootstrap.sh
@@ -333,6 +350,7 @@ jobs:
                   path: |
                       .environment/gn_out/.ninja_log
                       .environment/pigweed-venv/*.log
+
             - name: Build Apps
               timeout-minutes: 90
               run: |
@@ -414,6 +432,14 @@ jobs:
                   mkdir /tmp/cores || true
                   sysctl -w kernel.core_pattern=/tmp/cores/core.%u.%p.%t || true
                   mkdir objdir-clone || true
+
+            - name: Bootstrap cache
+              uses: actions/cache@v3
+              with:
+                  key: ${{ runner.os }}-env-${{ hashFiles('scripts/setup/*') }}
+                  path: |
+                      .environment
+                      build_overrides/pigweed_environment.gni
             - name: Bootstrap
               timeout-minutes: 10
               run: scripts/build/gn_bootstrap.sh
@@ -425,6 +451,7 @@ jobs:
                   path: |
                       .environment/gn_out/.ninja_log
                       .environment/pigweed-venv/*.log
+
             - name: Build Python REPL and example apps
               timeout-minutes: 50
               run: |
@@ -490,6 +517,14 @@ jobs:
                   mkdir /tmp/cores || true
                   sysctl -w kernel.core_pattern=/tmp/cores/core.%u.%p.%t || true
                   mkdir objdir-clone || true
+
+            - name: Bootstrap cache
+              uses: actions/cache@v3
+              with:
+                  key: ${{ runner.os }}-env-${{ hashFiles('scripts/setup/*') }}
+                  path: |
+                      .environment
+                      build_overrides/pigweed_environment.gni
             - name: Bootstrap
               timeout-minutes: 10
               run: scripts/build/gn_bootstrap.sh
@@ -501,6 +536,7 @@ jobs:
                   path: |
                       .environment/gn_out/.ninja_log
                       .environment/pigweed-venv/*.log
+
             - name: Build Java Matter Controller and all clusters app
               timeout-minutes: 50
               run: |
@@ -546,7 +582,7 @@ jobs:
                      --tool-cluster "pairing" \
                      --tool-args "already-discovered --nodeid 1 --setup-pin-code 20202021 --address ::1 --port 5540 -t 1000" \
                      --factoryreset \
-                  '                  
+                  '
             - name: Uploading core files
               uses: actions/upload-artifact@v3
               if: ${{ failure() && !env.ACT }}
@@ -601,6 +637,14 @@ jobs:
                   ls -la /usr/local/Cellar/openssl@1.1
                   OPEN_SSL_VERSION=`ls -la /usr/local/Cellar/openssl@1.1 | cat | tail -n1 | awk '{print $NF}'`
                   ln -s /usr/local/Cellar/openssl@1.1/$OPEN_SSL_VERSION/lib/pkgconfig/* .
+
+            - name: Bootstrap cache
+              uses: actions/cache@v3
+              with:
+                  key: ${{ runner.os }}-env-${{ hashFiles('scripts/setup/*') }}
+                  path: |
+                      .environment
+                      build_overrides/pigweed_environment.gni
             - name: Bootstrap
               timeout-minutes: 25
               run: scripts/build/gn_bootstrap.sh
@@ -612,6 +656,7 @@ jobs:
                   path: |
                       .environment/gn_out/.ninja_log
                       .environment/pigweed-venv/*.log
+
             - name: Build Python REPL and example apps
               timeout-minutes: 50
               run: |
