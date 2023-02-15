@@ -104,9 +104,7 @@ jobs:
                   LOG_DIR: /tmp/log_output
                   CLEANUP_DOCKER_FOR_CI: 1
                   GITHUB_ACTION_RUN: 1
-              run: |
-                  ./scripts/run_in_build_env.sh \
-                    "./scripts/tests/cirque_tests.sh run_all_tests"
+              run: ./scripts/tests/cirque_tests.sh run_all_tests
 
             - name: Uploading Binaries
               uses: actions/upload-artifact@v3
