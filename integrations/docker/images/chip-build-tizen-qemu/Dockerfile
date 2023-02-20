@@ -88,6 +88,30 @@ RUN set -x \
     && guestfish --rw -a $TIZEN_IOT_IMAGE_ROOT -m /dev/sda glob rm $SYSTEMD_SYSTEM/mnt-inform.mount \
     && guestfish --rw -a $TIZEN_IOT_IMAGE_ROOT -m /dev/sda glob rm $SYSTEMD_SYSTEM/murphyd.service \
     && guestfish --rw -a $TIZEN_IOT_IMAGE_ROOT -m /dev/sda glob rm $SYSTEMD_SYSTEM/pulseaudio.service \
+    # Add HCI emulator (btvirt) from BlueZ project
+    && wget -O bluez.tar.gz https://github.com/bluez/bluez/archive/refs/tags/5.66.tar.gz \
+    && tar -xzf bluez.tar.gz \
+    && cd bluez-* \
+    && export CFLAGS="--sysroot=$TIZEN_SDK_SYSROOT" \
+    && export PKG_CONFIG_PATH="$TIZEN_SDK_SYSROOT/usr/lib/pkgconfig" \
+    && export PKG_CONFIG_SYSROOT_DIR="$TIZEN_SDK_SYSROOT" \
+    && ./bootstrap \
+    && ./configure --host=arm-linux-gnueabi --disable-client --disable-manpages --enable-testing --enable-tools \
+    && make lib/bluetooth/bluetooth.h lib/bluetooth/hci.h \
+    && make emulator/btvirt -j$(nproc) \
+    && guestfish --rw -a $TIZEN_IOT_IMAGE_ROOT -m /dev/sda glob copy-in emulator/btvirt /usr/bin/ \
+    # Grant access to vHCI for network_fw group
+    && UDEV_BT_VHCI=/usr/lib/udev/rules.d/99-bluetooth-vhci.rules \
+    && echo -n \
+    'KERNEL=="vhci", MODE="0660", GROUP="network_fw"\n' \
+    | guestfish --rw -a $TIZEN_IOT_IMAGE_ROOT -m /dev/sda upload - $UDEV_BT_VHCI \
+    # Create vHCI devices on startup (modify RPi4 hciattach script)
+    && BT_DEV_START_SH=/usr/etc/bluetooth/bt-dev-start-rpi3.sh \
+    && echo -n \
+    "#!/bin/sh\n" \
+    "/usr/bin/btvirt -l2 &\n" \
+    "sleep 0.5\n" \
+    | guestfish --rw -a $TIZEN_IOT_IMAGE_ROOT -m /dev/sda upload - $BT_DEV_START_SH \
     # Mount Tizen system partition on /opt-ro instead of /opt
     && SYSTEMD_UNIT_OPT_RO_MOUNT=$SYSTEMD_SYSTEM/opt\\x2dro.mount \
     && guestfish --rw -a $TIZEN_IOT_IMAGE_ROOT -m /dev/sda ln-sf $SYSTEMD_UNIT_OPT_RO_MOUNT $SYSTEMD_SYSTEM/local-fs.target.requires \
