@@ -151,7 +151,7 @@ chip_test_suite("tests") {
     "TestPowerSourceCluster.cpp",
 
     # "TestReadInteraction.cpp",
-    # "TestReportingEngine.cpp",
+    "TestReportingEngine.cpp",
     "TestStatusIB.cpp",
     "TestStatusResponseMessage.cpp",
     "TestTestEventTriggerDelegate.cpp",
