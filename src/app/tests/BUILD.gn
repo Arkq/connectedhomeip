@@ -129,8 +129,8 @@ chip_test_suite("tests") {
     "TestAttributeValueDecoder.cpp",
     "TestAttributeValueEncoder.cpp",
     "TestBasicCommandPathRegistry.cpp",
+    "TestBindingTable.cpp",
 
-    # "TestBindingTable.cpp",
     # "TestBuilderParser.cpp",
     # "TestClusterInfo.cpp",
     "TestCommandInteraction.cpp",
