@@ -142,8 +142,8 @@ chip_test_suite("tests") {
     "TestEventPathParams.cpp",
     "TestFabricScopedEventLogging.cpp",
     "TestInteractionModelEngine.cpp",
+    "TestMessageDef.cpp",
 
-    # "TestMessageDef.cpp",
     # "TestNullable.cpp",
     # "TestNumericAttributeTraits.cpp",
     # "TestOperationalStateClusterObjects.cpp",
