@@ -122,7 +122,8 @@ chip_test_suite("tests") {
   output_name = "libAppTests"
 
   test_sources = [
-    # "TestAclEvent.cpp",
+    "TestAclEvent.cpp",
+
     # "TestAttributeAccessInterfaceCache.cpp",
     # "TestAttributePathExpandIterator.cpp",
     # "TestAttributePersistenceProvider.cpp",

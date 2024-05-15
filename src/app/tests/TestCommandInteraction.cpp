@@ -42,7 +42,6 @@
 #include <messaging/ExchangeContext.h>
 #include <messaging/ExchangeMgr.h>
 #include <messaging/Flags.h>
-#include <messaging/tests/MessagingContext.h>
 #include <platform/CHIPDeviceLayer.h>
 #include <protocols/interaction_model/Constants.h>
 #include <system/SystemPacketBuffer.h>

@@ -36,7 +36,7 @@
 
 namespace {
 chip::EndpointId numEndpoints = 0;
-}
+} // namespace
 
 extern uint16_t emberAfGetClusterServerEndpointIndex(chip::EndpointId endpoint, chip::ClusterId cluster,
                                                      uint16_t fixedClusterServerEndpointCount)
@@ -63,8 +63,6 @@ public:
         chip::app::Clusters::PowerSourceServer::Instance().Shutdown();
         chip::Platform::MemoryShutdown();
     }
-
-    static void TestEndpointList();
 };
 
 std::vector<EndpointId> ReadEndpointsThroughAttributeReader(EndpointId endpoint)
