@@ -22,6 +22,8 @@
  *
  */
 
+#include <gtest/gtest.h>
+
 #include <app/EventLoggingDelegate.h>
 #include <app/EventLoggingTypes.h>
 #include <app/EventManagement.h>
@@ -36,14 +38,11 @@
 #include <lib/support/CodeUtils.h>
 #include <lib/support/EnforceFormat.h>
 #include <lib/support/UnitTestContext.h>
-#include <lib/support/UnitTestRegistration.h>
 #include <lib/support/logging/Constants.h>
 #include <messaging/ExchangeContext.h>
 #include <messaging/Flags.h>
 #include <platform/CHIPDeviceLayer.h>
 #include <system/TLVPacketBufferBackingStore.h>
-
-#include <nlunit-test.h>
 
 namespace {
 
@@ -52,9 +51,12 @@ static uint8_t gInfoEventBuffer[2048];
 static uint8_t gCritEventBuffer[2048];
 static chip::app::CircularEventBuffer gCircularEventBuffer[3];
 
-class TestContext : public chip::Test::AppContext
+class TestEventOverflow : public chip::Test::AppContext, public ::testing::Test
 {
 public:
+    static void SetUpTestSuite() { chip::Test::AppContext::SetUpTestSuite(); }
+    static void TearDownTestSuite() { chip::Test::AppContext::TearDownTestSuite(); }
+
     // Performs setup for each individual test in the test suite
     void SetUp() override
     {
@@ -99,7 +101,7 @@ public:
     }
 };
 
-static void CheckLogEventOverFlow(nlTestSuite * apSuite, void * apContext)
+TEST_F(TestEventOverflow, CheckLogEventOverFlow)
 {
     CHIP_ERROR err           = CHIP_NO_ERROR;
     chip::EventNumber oldEid = 0;
@@ -153,34 +155,13 @@ static void CheckLogEventOverFlow(nlTestSuite * apSuite, void * apContext)
         alternate = i % 10;
 
         err = logMgmt.LogEvent(&testEventGenerator, options, eid);
-        NL_TEST_ASSERT(apSuite, err == CHIP_NO_ERROR);
+        EXPECT_EQ(err, CHIP_NO_ERROR);
         if (eid > 0)
         {
-            NL_TEST_ASSERT(apSuite, eid == oldEid + 1);
+            EXPECT_EQ(eid, oldEid + 1);
             oldEid = eid;
         }
     }
 }
 
-const nlTest sTests[] = { NL_TEST_DEF("CheckLogEventOverFlow", CheckLogEventOverFlow), NL_TEST_SENTINEL() };
-
-// clang-format off
-nlTestSuite sSuite =
-{
-    "TestEventOverflow",
-    &sTests[0],
-    NL_TEST_WRAP_FUNCTION(TestContext::SetUpTestSuite),
-    NL_TEST_WRAP_FUNCTION(TestContext::TearDownTestSuite),
-    NL_TEST_WRAP_METHOD(TestContext, SetUp),
-    NL_TEST_WRAP_METHOD(TestContext, TearDown),
-};
-// clang-format on
-
 } // namespace
-
-int TestEventOverflow()
-{
-    return chip::ExecuteTestsWithContext<TestContext>(&sSuite);
-}
-
-CHIP_REGISTER_TEST_SUITE(TestEventOverflow)

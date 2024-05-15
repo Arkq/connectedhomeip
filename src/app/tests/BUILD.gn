@@ -138,9 +138,9 @@ chip_test_suite("tests") {
     "TestDataModelSerialization.cpp",
     "TestDefaultOTARequestorStorage.cpp",
     "TestEventLoggingNoUTCTime.cpp",
+    "TestEventOverflow.cpp",
+    "TestEventPathParams.cpp",
 
-    # "TestEventOverflow.cpp",
-    # "TestEventPathParams.cpp",
     # "TestFabricScopedEventLogging.cpp",
     # "TestInteractionModelEngine.cpp",
     # "TestMessageDef.cpp",
