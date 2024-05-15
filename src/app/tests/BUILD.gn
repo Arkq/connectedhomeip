@@ -133,9 +133,9 @@ chip_test_suite("tests") {
     "TestBuilderParser.cpp",
     "TestClusterInfo.cpp",
     "TestCommandInteraction.cpp",
+    "TestCommandPathParams.cpp",
+    "TestConcreteAttributePath.cpp",
 
-    # "TestCommandPathParams.cpp",
-    # "TestConcreteAttributePath.cpp",
     # "TestDataModelSerialization.cpp",
     # "TestDefaultOTARequestorStorage.cpp",
     # "TestEventLoggingNoUTCTime.cpp",
