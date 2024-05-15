@@ -128,8 +128,8 @@ chip_test_suite("tests") {
     "TestAttributePersistenceProvider.cpp",
     "TestAttributeValueDecoder.cpp",
     "TestAttributeValueEncoder.cpp",
+    "TestBasicCommandPathRegistry.cpp",
 
-    # "TestBasicCommandPathRegistry.cpp",
     # "TestBindingTable.cpp",
     # "TestBuilderParser.cpp",
     # "TestClusterInfo.cpp",
