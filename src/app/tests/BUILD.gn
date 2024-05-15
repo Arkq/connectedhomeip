@@ -126,9 +126,9 @@ chip_test_suite("tests") {
     "TestAttributeAccessInterfaceCache.cpp",
     "TestAttributePathExpandIterator.cpp",
     "TestAttributePersistenceProvider.cpp",
+    "TestAttributeValueDecoder.cpp",
+    "TestAttributeValueEncoder.cpp",
 
-    # "TestAttributeValueDecoder.cpp",
-    # "TestAttributeValueEncoder.cpp",
     # "TestBasicCommandPathRegistry.cpp",
     # "TestBindingTable.cpp",
     # "TestBuilderParser.cpp",
