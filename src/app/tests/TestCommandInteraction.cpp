@@ -23,6 +23,9 @@
  */
 
 #include <cinttypes>
+#include <optional>
+
+#include <gtest/gtest.h>
 
 #include <app/AppConfig.h>
 #include <app/InteractionModelEngine.h>
@@ -35,33 +38,27 @@
 #include <lib/core/TLVDebug.h>
 #include <lib/core/TLVUtilities.h>
 #include <lib/support/UnitTestContext.h>
-#include <lib/support/UnitTestRegistration.h>
 #include <lib/support/logging/CHIPLogging.h>
 #include <messaging/ExchangeContext.h>
 #include <messaging/ExchangeMgr.h>
 #include <messaging/Flags.h>
-#include <optional>
+#include <messaging/tests/MessagingContext.h>
 #include <platform/CHIPDeviceLayer.h>
 #include <protocols/interaction_model/Constants.h>
 #include <system/SystemPacketBuffer.h>
 #include <system/TLVPacketBufferBackingStore.h>
 
-#include <nlunit-test.h>
-
-using TestContext = chip::Test::AppContext;
 using namespace chip::Protocols;
 
 namespace {
 
-void CheckForInvalidAction(nlTestSuite * apSuite, chip::Test::MessageCapturer & messageLog)
+void CheckForInvalidAction(chip::Test::MessageCapturer & messageLog)
 {
-    NL_TEST_ASSERT(apSuite, messageLog.MessageCount() == 1);
-    NL_TEST_ASSERT(apSuite, messageLog.IsMessageType(0, chip::Protocols::InteractionModel::MsgType::StatusResponse));
+    EXPECT_EQ(messageLog.MessageCount(), 1U);
+    EXPECT_TRUE(messageLog.IsMessageType(0, chip::Protocols::InteractionModel::MsgType::StatusResponse));
     CHIP_ERROR status;
-    NL_TEST_ASSERT(apSuite,
-                   chip::app::StatusResponse::ProcessStatusResponse(std::move(messageLog.MessagePayload(0)), status) ==
-                       CHIP_NO_ERROR);
-    NL_TEST_ASSERT(apSuite, status == CHIP_IM_GLOBAL_STATUS(InvalidAction));
+    EXPECT_EQ(chip::app::StatusResponse::ProcessStatusResponse(std::move(messageLog.MessagePayload(0)), status), CHIP_NO_ERROR);
+    EXPECT_EQ(status, CHIP_IM_GLOBAL_STATUS(InvalidAction));
 }
 
 } // anonymous namespace
@@ -69,14 +66,12 @@ void CheckForInvalidAction(nlTestSuite * apSuite, chip::Test::MessageCapturer & 
 namespace chip {
 
 namespace {
+
 bool isCommandDispatched      = false;
 size_t commandDispatchedCount = 0;
 
 bool sendResponse = true;
 bool asyncCommand = false;
-
-// Allow us to do test asserts from arbitrary places.
-nlTestSuite * gSuite = nullptr;
 
 constexpr EndpointId kTestEndpointId                      = 1;
 constexpr ClusterId kTestClusterId                        = 3;
@@ -87,9 +82,39 @@ constexpr CommandId kTestCommandIdFillResponseMessage     = 7;
 constexpr CommandId kTestNonExistCommandId                = 0;
 
 const app::CommandSender::TestOnlyMarker kCommandSenderTestOnlyMarker;
+
 } // namespace
 
 namespace app {
+
+// FIXME: To be removed when TestReadInteraction is ported
+bool IsClusterDataVersionEqual(const ConcreteClusterPath & aConcreteClusterPath, DataVersion aRequiredVersion)
+{
+    return false;
+}
+
+// FIXME: To be removed when TestReadInteraction is ported
+CHIP_ERROR ReadSingleClusterData(const Access::SubjectDescriptor & aSubjectDescriptor, bool aIsFabricFiltered,
+                                 const ConcreteReadAttributePath & aPath, AttributeReportIBs::Builder & aAttributeReports,
+                                 AttributeEncodeState * apEncoderState)
+{
+    return CHIP_NO_ERROR;
+}
+
+// FIXME: To be removed when TestWriteInteraction is ported
+const EmberAfAttributeMetadata * GetAttributeMetadata(const ConcreteAttributePath & aConcreteClusterPath)
+{
+    // Note: This test does not make use of the real attribute metadata.
+    static EmberAfAttributeMetadata stub = { .defaultValue = EmberAfDefaultOrMinMaxAttributeValue(uint32_t(0)) };
+    return &stub;
+}
+
+// FIXME: To be removed when TestWriteInteraction is ported
+CHIP_ERROR WriteSingleClusterData(const Access::SubjectDescriptor & aSubjectDescriptor, const ConcreteDataAttributePath & aPath,
+                                  TLV::TLVReader & aReader, WriteHandler * aWriteHandler)
+{
+    return CHIP_NO_ERROR;
+}
 
 CommandHandler::Handle asyncCommandHandle;
 
@@ -165,25 +190,25 @@ void DispatchSingleClusterCommand(const ConcreteCommandPath & aRequestCommandPat
 
     TLV::TLVType outerContainerType;
     CHIP_ERROR err = aReader.EnterContainer(outerContainerType);
-    NL_TEST_ASSERT(gSuite, err == CHIP_NO_ERROR);
+    EXPECT_EQ(err, CHIP_NO_ERROR);
 
     err = aReader.Next();
     if (aRequestCommandPath.mCommandId == kTestCommandIdNoData)
     {
-        NL_TEST_ASSERT(gSuite, err == CHIP_ERROR_END_OF_TLV);
+        EXPECT_EQ(err, CHIP_ERROR_END_OF_TLV);
     }
     else
     {
-        NL_TEST_ASSERT(gSuite, err == CHIP_NO_ERROR);
-        NL_TEST_ASSERT(gSuite, aReader.GetTag() == TLV::ContextTag(1));
+        EXPECT_EQ(err, CHIP_NO_ERROR);
+        EXPECT_EQ(aReader.GetTag(), TLV::ContextTag(1));
         bool val;
         err = aReader.Get(val);
-        NL_TEST_ASSERT(gSuite, err == CHIP_NO_ERROR);
-        NL_TEST_ASSERT(gSuite, val);
+        EXPECT_EQ(err, CHIP_NO_ERROR);
+        EXPECT_TRUE(val);
     }
 
     err = aReader.ExitContainer(outerContainerType);
-    NL_TEST_ASSERT(gSuite, err == CHIP_NO_ERROR);
+    EXPECT_EQ(err, CHIP_NO_ERROR);
 
     if (asyncCommand)
     {
@@ -319,66 +344,19 @@ public:
     int onFinalCalledTimes = 0;
 } mockCommandHandlerDelegate;
 
-class TestCommandInteraction
+class TestCommandInteraction : public chip::Test::AppContext, public ::testing::Test
 {
 public:
-    static void TestCommandSenderWithWrongState(nlTestSuite * apSuite, void * apContext);
-    static void TestCommandHandlerWithWrongState(nlTestSuite * apSuite, void * apContext);
-    static void TestCommandSenderWithSendCommand(nlTestSuite * apSuite, void * apContext);
-    static void TestCommandHandlerWithSendEmptyCommand(nlTestSuite * apSuite, void * apContext);
-    static void TestCommandSenderWithProcessReceivedMsg(nlTestSuite * apSuite, void * apContext);
-    static void TestCommandSenderExtendableApiWithProcessReceivedMsg(nlTestSuite * apSuite, void * apContext);
-    static void TestCommandSenderExtendableApiWithProcessReceivedMsgContainingInvalidCommandRef(nlTestSuite * apSuite,
-                                                                                                void * apContext);
-    static void TestCommandHandlerWithOnInvokeReceivedNotExistCommand(nlTestSuite * apSuite, void * apContext);
-    static void TestCommandHandlerEncodeSimpleCommandData(nlTestSuite * apSuite, void * apContext);
-    static void TestCommandHandlerCommandDataEncoding(nlTestSuite * apSuite, void * apContext);
-    static void TestCommandHandlerCommandEncodeFailure(nlTestSuite * apSuite, void * apContext);
-    static void TestCommandInvalidMessage1(nlTestSuite * apSuite, void * apContext);
-    static void TestCommandInvalidMessage2(nlTestSuite * apSuite, void * apContext);
-    static void TestCommandInvalidMessage3(nlTestSuite * apSuite, void * apContext);
-    static void TestCommandInvalidMessage4(nlTestSuite * apSuite, void * apContext);
-    static void TestCommandHandlerInvalidMessageSync(nlTestSuite * apSuite, void * apContext);
-    static void TestCommandHandlerCommandEncodeExternalFailure(nlTestSuite * apSuite, void * apContext);
-    static void TestCommandHandlerEncodeSimpleStatusCode(nlTestSuite * apSuite, void * apContext);
-    static void TestCommandHandlerWithoutResponderCallingAddStatus(nlTestSuite * apSuite, void * apContext);
-    static void TestCommandHandlerWithoutResponderCallingAddResponse(nlTestSuite * apSuite, void * apContext);
-    static void TestCommandHandlerWithoutResponderCallingDirectPrepareFinishCommandApis(nlTestSuite * apSuite, void * apContext);
-
-    static void TestCommandHandlerWithOnInvokeReceivedEmptyDataMsg(nlTestSuite * apSuite, void * apContext);
-    static void TestCommandHandlerRejectMultipleIdenticalCommands(nlTestSuite * apSuite, void * apContext);
-    static void TestCommandHandlerRejectsMultipleCommandsWithIdenticalCommandRef(nlTestSuite * apSuite, void * apContext);
-    static void TestCommandHandlerRejectMultipleCommandsWhenHandlerOnlySupportsOne(nlTestSuite * apSuite, void * apContext);
-    static void TestCommandHandlerAcceptMultipleCommands(nlTestSuite * apSuite, void * apContext);
-    static void TestCommandHandler_FillUpInvokeResponseMessageWhereSecondResponseIsStatusResponse(nlTestSuite * apSuite,
-                                                                                                  void * apContext);
-    static void TestCommandHandler_FillUpInvokeResponseMessageWhereSecondResponseIsDataResponsePrimative(nlTestSuite * apSuite,
-                                                                                                         void * apContext);
-    static void TestCommandHandler_FillUpInvokeResponseMessageWhereSecondResponseIsDataResponse(nlTestSuite * apSuite,
-                                                                                                void * apContext);
-
-#if CONFIG_BUILD_FOR_HOST_UNIT_TEST
-    static void TestCommandHandlerReleaseWithExchangeClosed(nlTestSuite * apSuite, void * apContext);
-#endif
-
-    static void TestCommandSenderLegacyCallbackUnsupportedCommand(nlTestSuite * apSuite, void * apContext);
-    static void TestCommandSenderExtendableCallbackUnsupportedCommand(nlTestSuite * apSuite, void * apContext);
-    static void TestCommandSenderLegacyCallbackBuildingBatchCommandFails(nlTestSuite * apSuite, void * apContext);
-    static void TestCommandSenderExtendableCallbackBuildingBatchDuplicateCommandRefFails(nlTestSuite * apSuite, void * apContext);
-    static void TestCommandSenderExtendableCallbackBuildingBatchCommandSuccess(nlTestSuite * apSuite, void * apContext);
-    static void TestCommandSenderCommandSuccessResponseFlow(nlTestSuite * apSuite, void * apContext);
-    static void TestCommandSenderCommandAsyncSuccessResponseFlow(nlTestSuite * apSuite, void * apContext);
-    static void TestCommandSenderCommandFailureResponseFlow(nlTestSuite * apSuite, void * apContext);
-    static void TestCommandSenderCommandSpecificResponseFlow(nlTestSuite * apSuite, void * apContext);
-
-    static void TestCommandSenderAbruptDestruction(nlTestSuite * apSuite, void * apContext);
+    static void SetUpTestSuite() { chip::Test::AppContext::SetUpTestSuite(); }
+    static void TearDownTestSuite() { chip::Test::AppContext::TearDownTestSuite(); }
+    void SetUp() { chip::Test::AppContext::SetUp(); }
+    void TearDown() { chip::Test::AppContext::TearDown(); }
 
     static size_t GetNumActiveCommandResponderObjects()
     {
         return chip::app::InteractionModelEngine::GetInstance()->mCommandResponderObjs.Allocated();
     }
 
-private:
     /**
      * With the introduction of batch invoke commands, CommandHandler keeps track of incoming
      * ConcreteCommandPath and the associated CommandRefs. These are normally populated
@@ -390,8 +368,7 @@ private:
     {
     public:
         CommandHandlerWithUnrespondedCommand(CommandHandler::Callback * apCallback, const ConcreteCommandPath & aRequestCommandPath,
-                                             const Optional<uint16_t> & aRef) :
-            CommandHandler(apCallback)
+                                             const Optional<uint16_t> & aRef) : CommandHandler(apCallback)
         {
             GetCommandPathRegistry().Add(aRequestCommandPath, aRef.std_optional());
             SetExchangeInterface(&mMockCommandResponder);
@@ -401,48 +378,61 @@ private:
 
     // Generate an invoke request.  If aCommandId is kTestCommandIdWithData, a
     // payload will be included.  Otherwise no payload will be included.
-    static void GenerateInvokeRequest(nlTestSuite * apSuite, void * apContext, System::PacketBufferHandle & aPayload,
-                                      bool aIsTimedRequest, CommandId aCommandId, ClusterId aClusterId = kTestClusterId,
-                                      EndpointId aEndpointId = kTestEndpointId);
+    static void GenerateInvokeRequest(System::PacketBufferHandle & aPayload, bool aIsTimedRequest, CommandId aCommandId,
+                                      ClusterId aClusterId = kTestClusterId, EndpointId aEndpointId = kTestEndpointId);
     // Generate an invoke response.  If aCommandId is kTestCommandIdWithData, a
     // payload will be included.  Otherwise no payload will be included.
-    static void GenerateInvokeResponse(nlTestSuite * apSuite, void * apContext, System::PacketBufferHandle & aPayload,
-                                       CommandId aCommandId, ClusterId aClusterId = kTestClusterId,
-                                       EndpointId aEndpointId              = kTestEndpointId,
+    static void GenerateInvokeResponse(System::PacketBufferHandle & aPayload, CommandId aCommandId,
+                                       ClusterId aClusterId = kTestClusterId, EndpointId aEndpointId = kTestEndpointId,
                                        std::optional<uint16_t> aCommandRef = std::nullopt);
-    static void AddInvokeRequestData(nlTestSuite * apSuite, void * apContext, CommandSender * apCommandSender,
-                                     CommandId aCommandId = kTestCommandIdWithData);
-    static void AddInvalidInvokeRequestData(nlTestSuite * apSuite, void * apContext, CommandSender * apCommandSender,
-                                            CommandId aCommandId = kTestCommandIdWithData);
-    static void AddInvokeResponseData(nlTestSuite * apSuite, void * apContext, CommandHandler * apCommandHandler,
-                                      bool aNeedStatusCode, CommandId aResponseCommandId = kTestCommandIdWithData,
-                                      CommandId aRequestCommandId = kTestCommandIdWithData);
-    static uint32_t GetAddResponseDataOverheadSizeForPath(nlTestSuite * apSuite, const ConcreteCommandPath & aRequestCommandPath,
+    static void AddInvokeRequestData(CommandSender * apCommandSender, CommandId aCommandId = kTestCommandIdWithData);
+    static void AddInvalidInvokeRequestData(CommandSender * apCommandSender, CommandId aCommandId = kTestCommandIdWithData);
+    static void AddInvokeResponseData(CommandHandler * apCommandHandler, bool aNeedStatusCode,
+                                      CommandId aResponseCommandId = kTestCommandIdWithData,
+                                      CommandId aRequestCommandId  = kTestCommandIdWithData);
+    static uint32_t GetAddResponseDataOverheadSizeForPath(const ConcreteCommandPath & aRequestCommandPath,
                                                           ForcedSizeBufferLengthHint aBufferSizeHint);
-    static void FillCurrentInvokeResponseBuffer(nlTestSuite * apSuite, CommandHandler * apCommandHandler,
-                                                const ConcreteCommandPath & aRequestCommandPath, uint32_t aSizeToLeaveInBuffer);
-    static void ValidateCommandHandlerEncodeInvokeResponseMessage(nlTestSuite * apSuite, void * apContext, bool aNeedStatusCode);
+    static void FillCurrentInvokeResponseBuffer(CommandHandler * apCommandHandler, const ConcreteCommandPath & aRequestCommandPath,
+                                                uint32_t aSizeToLeaveInBuffer);
+    static void ValidateCommandHandlerEncodeInvokeResponseMessage(bool aNeedStatusCode);
+
+    void TestCommandSenderWithProcessReceivedMsg();
+    void TestCommandSenderExtendableApiWithProcessReceivedMsg();
+    void TestCommandSenderWithSendCommand();
+    void TestCommandSenderExtendableApiWithProcessReceivedMsgContainingInvalidCommandRef();
+    void TestCommandInvalidMessage1();
+    void TestCommandInvalidMessage2();
+    void TestCommandInvalidMessage3();
+    void TestCommandInvalidMessage4();
+    void TestCommandHandlerWithoutResponderCallingAddStatus();
+    void TestCommandHandlerWithoutResponderCallingAddResponse();
+    void TestCommandHandlerWithoutResponderCallingDirectPrepareFinishCommandApis();
+    void TestCommandHandlerRejectsMultipleCommandsWithIdenticalCommandRef();
+    void TestCommandHandlerRejectMultipleCommandsWhenHandlerOnlySupportsOne();
+    void TestCommandHandlerAcceptMultipleCommands();
+    void TestCommandHandler_FillUpInvokeResponseMessageWhereSecondResponseIsStatusResponse();
+    void TestCommandHandler_FillUpInvokeResponseMessageWhereSecondResponseIsDataResponsePrimitive();
+    void TestCommandHandler_FillUpInvokeResponseMessageWhereSecondResponseIsDataResponse();
+    void TestCommandHandlerReleaseWithExchangeClosed();
 };
 
-class TestExchangeDelegate : public Messaging::ExchangeDelegate
-{
-    CHIP_ERROR OnMessageReceived(Messaging::ExchangeContext * ec, const PayloadHeader & payloadHeader,
-                                 System::PacketBufferHandle && payload) override
-    {
-        return CHIP_NO_ERROR;
-    }
-
-    void OnResponseTimeout(Messaging::ExchangeContext * ec) override {}
-};
+/*
+ * Run fixture's class function as a test.
+ */
+#define TEST_F_FROM_FIXTURE(test_fixture, test_name)                                                                               \
+    TEST_F(test_fixture, test_name)                                                                                                \
+    {                                                                                                                              \
+        test_name();                                                                                                               \
+    }                                                                                                                              \
+    void test_fixture::test_name()
 
 CommandPathParams MakeTestCommandPath(CommandId aCommandId = kTestCommandIdWithData)
 {
     return CommandPathParams(kTestEndpointId, 0, kTestClusterId, aCommandId, (chip::app::CommandPathFlags::kEndpointIdValid));
 }
 
-void TestCommandInteraction::GenerateInvokeRequest(nlTestSuite * apSuite, void * apContext, System::PacketBufferHandle & aPayload,
-                                                   bool aIsTimedRequest, CommandId aCommandId, ClusterId aClusterId,
-                                                   EndpointId aEndpointId)
+void TestCommandInteraction::GenerateInvokeRequest(System::PacketBufferHandle & aPayload, bool aIsTimedRequest,
+                                                   CommandId aCommandId, ClusterId aClusterId, EndpointId aEndpointId)
 
 {
     CHIP_ERROR err = CHIP_NO_ERROR;
@@ -451,20 +441,20 @@ void TestCommandInteraction::GenerateInvokeRequest(nlTestSuite * apSuite, void *
     writer.Init(std::move(aPayload));
 
     err = invokeRequestMessageBuilder.Init(&writer);
-    NL_TEST_ASSERT(apSuite, err == CHIP_NO_ERROR);
+    EXPECT_EQ(err, CHIP_NO_ERROR);
 
     invokeRequestMessageBuilder.SuppressResponse(true).TimedRequest(aIsTimedRequest);
     InvokeRequests::Builder & invokeRequests = invokeRequestMessageBuilder.CreateInvokeRequests();
-    NL_TEST_ASSERT(apSuite, invokeRequestMessageBuilder.GetError() == CHIP_NO_ERROR);
+    EXPECT_EQ(invokeRequestMessageBuilder.GetError(), CHIP_NO_ERROR);
 
     CommandDataIB::Builder & commandDataIBBuilder = invokeRequests.CreateCommandData();
-    NL_TEST_ASSERT(apSuite, invokeRequests.GetError() == CHIP_NO_ERROR);
+    EXPECT_EQ(invokeRequests.GetError(), CHIP_NO_ERROR);
 
     CommandPathIB::Builder & commandPathBuilder = commandDataIBBuilder.CreatePath();
-    NL_TEST_ASSERT(apSuite, commandDataIBBuilder.GetError() == CHIP_NO_ERROR);
+    EXPECT_EQ(commandDataIBBuilder.GetError(), CHIP_NO_ERROR);
 
     commandPathBuilder.EndpointId(aEndpointId).ClusterId(aClusterId).CommandId(aCommandId).EndOfCommandPathIB();
-    NL_TEST_ASSERT(apSuite, commandPathBuilder.GetError() == CHIP_NO_ERROR);
+    EXPECT_EQ(commandPathBuilder.GetError(), CHIP_NO_ERROR);
 
     if (aCommandId == kTestCommandIdWithData)
     {
@@ -472,30 +462,30 @@ void TestCommandInteraction::GenerateInvokeRequest(nlTestSuite * apSuite, void *
         chip::TLV::TLVType dummyType   = chip::TLV::kTLVType_NotSpecified;
         err = pWriter->StartContainer(chip::TLV::ContextTag(chip::to_underlying(CommandDataIB::Tag::kFields)),
                                       chip::TLV::kTLVType_Structure, dummyType);
-        NL_TEST_ASSERT(apSuite, err == CHIP_NO_ERROR);
+        EXPECT_EQ(err, CHIP_NO_ERROR);
 
         err = pWriter->PutBoolean(chip::TLV::ContextTag(1), true);
-        NL_TEST_ASSERT(apSuite, err == CHIP_NO_ERROR);
+        EXPECT_EQ(err, CHIP_NO_ERROR);
 
         err = pWriter->EndContainer(dummyType);
-        NL_TEST_ASSERT(apSuite, err == CHIP_NO_ERROR);
+        EXPECT_EQ(err, CHIP_NO_ERROR);
     }
 
     commandDataIBBuilder.EndOfCommandDataIB();
-    NL_TEST_ASSERT(apSuite, commandDataIBBuilder.GetError() == CHIP_NO_ERROR);
+    EXPECT_EQ(commandDataIBBuilder.GetError(), CHIP_NO_ERROR);
 
     invokeRequests.EndOfInvokeRequests();
-    NL_TEST_ASSERT(apSuite, invokeRequests.GetError() == CHIP_NO_ERROR);
+    EXPECT_EQ(invokeRequests.GetError(), CHIP_NO_ERROR);
 
     invokeRequestMessageBuilder.EndOfInvokeRequestMessage();
-    NL_TEST_ASSERT(apSuite, invokeRequestMessageBuilder.GetError() == CHIP_NO_ERROR);
+    EXPECT_EQ(invokeRequestMessageBuilder.GetError(), CHIP_NO_ERROR);
 
     err = writer.Finalize(&aPayload);
-    NL_TEST_ASSERT(apSuite, err == CHIP_NO_ERROR);
+    EXPECT_EQ(err, CHIP_NO_ERROR);
 }
 
-void TestCommandInteraction::GenerateInvokeResponse(nlTestSuite * apSuite, void * apContext, System::PacketBufferHandle & aPayload,
-                                                    CommandId aCommandId, ClusterId aClusterId, EndpointId aEndpointId,
+void TestCommandInteraction::GenerateInvokeResponse(System::PacketBufferHandle & aPayload, CommandId aCommandId,
+                                                    ClusterId aClusterId, EndpointId aEndpointId,
                                                     std::optional<uint16_t> aCommandRef)
 
 {
@@ -505,23 +495,23 @@ void TestCommandInteraction::GenerateInvokeResponse(nlTestSuite * apSuite, void 
     writer.Init(std::move(aPayload));
 
     err = invokeResponseMessageBuilder.Init(&writer);
-    NL_TEST_ASSERT(apSuite, err == CHIP_NO_ERROR);
+    EXPECT_EQ(err, CHIP_NO_ERROR);
 
     invokeResponseMessageBuilder.SuppressResponse(true);
     InvokeResponseIBs::Builder & invokeResponses = invokeResponseMessageBuilder.CreateInvokeResponses();
-    NL_TEST_ASSERT(apSuite, invokeResponseMessageBuilder.GetError() == CHIP_NO_ERROR);
+    EXPECT_EQ(invokeResponseMessageBuilder.GetError(), CHIP_NO_ERROR);
 
     InvokeResponseIB::Builder & invokeResponseIBBuilder = invokeResponses.CreateInvokeResponse();
-    NL_TEST_ASSERT(apSuite, invokeResponses.GetError() == CHIP_NO_ERROR);
+    EXPECT_EQ(invokeResponses.GetError(), CHIP_NO_ERROR);
 
     CommandDataIB::Builder & commandDataIBBuilder = invokeResponseIBBuilder.CreateCommand();
-    NL_TEST_ASSERT(apSuite, commandDataIBBuilder.GetError() == CHIP_NO_ERROR);
+    EXPECT_EQ(commandDataIBBuilder.GetError(), CHIP_NO_ERROR);
 
     CommandPathIB::Builder & commandPathBuilder = commandDataIBBuilder.CreatePath();
-    NL_TEST_ASSERT(apSuite, commandDataIBBuilder.GetError() == CHIP_NO_ERROR);
+    EXPECT_EQ(commandDataIBBuilder.GetError(), CHIP_NO_ERROR);
 
     commandPathBuilder.EndpointId(aEndpointId).ClusterId(aClusterId).CommandId(aCommandId).EndOfCommandPathIB();
-    NL_TEST_ASSERT(apSuite, commandPathBuilder.GetError() == CHIP_NO_ERROR);
+    EXPECT_EQ(commandPathBuilder.GetError(), CHIP_NO_ERROR);
 
     if (aCommandId == kTestCommandIdWithData)
     {
@@ -529,73 +519,71 @@ void TestCommandInteraction::GenerateInvokeResponse(nlTestSuite * apSuite, void 
         chip::TLV::TLVType dummyType   = chip::TLV::kTLVType_NotSpecified;
         err = pWriter->StartContainer(chip::TLV::ContextTag(chip::to_underlying(CommandDataIB::Tag::kFields)),
                                       chip::TLV::kTLVType_Structure, dummyType);
-        NL_TEST_ASSERT(apSuite, err == CHIP_NO_ERROR);
+        EXPECT_EQ(err, CHIP_NO_ERROR);
 
         err = pWriter->PutBoolean(chip::TLV::ContextTag(1), true);
-        NL_TEST_ASSERT(apSuite, err == CHIP_NO_ERROR);
+        EXPECT_EQ(err, CHIP_NO_ERROR);
 
         err = pWriter->EndContainer(dummyType);
-        NL_TEST_ASSERT(apSuite, err == CHIP_NO_ERROR);
+        EXPECT_EQ(err, CHIP_NO_ERROR);
     }
 
     if (aCommandRef.has_value())
     {
-        NL_TEST_ASSERT(apSuite, commandDataIBBuilder.Ref(*aCommandRef) == CHIP_NO_ERROR);
+        EXPECT_EQ(commandDataIBBuilder.Ref(*aCommandRef), CHIP_NO_ERROR);
     }
 
     commandDataIBBuilder.EndOfCommandDataIB();
-    NL_TEST_ASSERT(apSuite, commandDataIBBuilder.GetError() == CHIP_NO_ERROR);
+    EXPECT_EQ(commandDataIBBuilder.GetError(), CHIP_NO_ERROR);
 
     invokeResponseIBBuilder.EndOfInvokeResponseIB();
-    NL_TEST_ASSERT(apSuite, invokeResponseIBBuilder.GetError() == CHIP_NO_ERROR);
+    EXPECT_EQ(invokeResponseIBBuilder.GetError(), CHIP_NO_ERROR);
 
     invokeResponses.EndOfInvokeResponses();
-    NL_TEST_ASSERT(apSuite, invokeResponses.GetError() == CHIP_NO_ERROR);
+    EXPECT_EQ(invokeResponses.GetError(), CHIP_NO_ERROR);
 
     invokeResponseMessageBuilder.EndOfInvokeResponseMessage();
-    NL_TEST_ASSERT(apSuite, invokeResponseMessageBuilder.GetError() == CHIP_NO_ERROR);
+    EXPECT_EQ(invokeResponseMessageBuilder.GetError(), CHIP_NO_ERROR);
 
     err = writer.Finalize(&aPayload);
-    NL_TEST_ASSERT(apSuite, err == CHIP_NO_ERROR);
+    EXPECT_EQ(err, CHIP_NO_ERROR);
 }
 
-void TestCommandInteraction::AddInvokeRequestData(nlTestSuite * apSuite, void * apContext, CommandSender * apCommandSender,
-                                                  CommandId aCommandId)
+void TestCommandInteraction::AddInvokeRequestData(CommandSender * apCommandSender, CommandId aCommandId)
 {
     CHIP_ERROR err         = CHIP_NO_ERROR;
     auto commandPathParams = MakeTestCommandPath(aCommandId);
 
     err = apCommandSender->PrepareCommand(commandPathParams);
-    NL_TEST_ASSERT(apSuite, err == CHIP_NO_ERROR);
+    EXPECT_EQ(err, CHIP_NO_ERROR);
 
     chip::TLV::TLVWriter * writer = apCommandSender->GetCommandDataIBTLVWriter();
 
     err = writer->PutBoolean(chip::TLV::ContextTag(1), true);
-    NL_TEST_ASSERT(apSuite, err == CHIP_NO_ERROR);
+    EXPECT_EQ(err, CHIP_NO_ERROR);
 
     err = apCommandSender->FinishCommand();
-    NL_TEST_ASSERT(apSuite, err == CHIP_NO_ERROR);
+    EXPECT_EQ(err, CHIP_NO_ERROR);
 }
 
-void TestCommandInteraction::AddInvalidInvokeRequestData(nlTestSuite * apSuite, void * apContext, CommandSender * apCommandSender,
-                                                         CommandId aCommandId)
+void TestCommandInteraction::AddInvalidInvokeRequestData(CommandSender * apCommandSender, CommandId aCommandId)
 {
     CHIP_ERROR err         = CHIP_NO_ERROR;
     auto commandPathParams = MakeTestCommandPath(aCommandId);
 
     err = apCommandSender->PrepareCommand(commandPathParams);
-    NL_TEST_ASSERT(apSuite, err == CHIP_NO_ERROR);
+    EXPECT_EQ(err, CHIP_NO_ERROR);
 
     chip::TLV::TLVWriter * writer = apCommandSender->GetCommandDataIBTLVWriter();
 
     err = writer->PutBoolean(chip::TLV::ContextTag(1), true);
-    NL_TEST_ASSERT(apSuite, err == CHIP_NO_ERROR);
+    EXPECT_EQ(err, CHIP_NO_ERROR);
 
     apCommandSender->MoveToState(CommandSender::State::AddedCommand);
 }
 
-void TestCommandInteraction::AddInvokeResponseData(nlTestSuite * apSuite, void * apContext, CommandHandler * apCommandHandler,
-                                                   bool aNeedStatusCode, CommandId aResponseCommandId, CommandId aRequestCommandId)
+void TestCommandInteraction::AddInvokeResponseData(CommandHandler * apCommandHandler, bool aNeedStatusCode,
+                                                   CommandId aResponseCommandId, CommandId aRequestCommandId)
 {
     CHIP_ERROR err = CHIP_NO_ERROR;
 
@@ -611,20 +599,19 @@ void TestCommandInteraction::AddInvokeResponseData(nlTestSuite * apSuite, void *
         const CommandHandler::InvokeResponseParameters prepareParams(requestCommandPath);
         ConcreteCommandPath responseCommandPath = { kTestEndpointId, kTestClusterId, aResponseCommandId };
         err = apCommandHandler->PrepareInvokeResponseCommand(responseCommandPath, prepareParams);
-        NL_TEST_ASSERT(apSuite, err == CHIP_NO_ERROR);
+        EXPECT_EQ(err, CHIP_NO_ERROR);
 
         chip::TLV::TLVWriter * writer = apCommandHandler->GetCommandDataIBTLVWriter();
 
         err = writer->PutBoolean(chip::TLV::ContextTag(1), true);
-        NL_TEST_ASSERT(apSuite, err == CHIP_NO_ERROR);
+        EXPECT_EQ(err, CHIP_NO_ERROR);
 
         err = apCommandHandler->FinishCommand();
-        NL_TEST_ASSERT(apSuite, err == CHIP_NO_ERROR);
+        EXPECT_EQ(err, CHIP_NO_ERROR);
     }
 }
 
-uint32_t TestCommandInteraction::GetAddResponseDataOverheadSizeForPath(nlTestSuite * apSuite,
-                                                                       const ConcreteCommandPath & aRequestCommandPath,
+uint32_t TestCommandInteraction::GetAddResponseDataOverheadSizeForPath(const ConcreteCommandPath & aRequestCommandPath,
                                                                        ForcedSizeBufferLengthHint aBufferSizeHint)
 {
     BasicCommandPathRegistry<4> basicCommandPathRegistry;
@@ -636,64 +623,58 @@ uint32_t TestCommandInteraction::GetAddResponseDataOverheadSizeForPath(nlTestSui
     ConcreteCommandPath requestCommandPath2          = { kTestEndpointId, kTestClusterId, kTestCommandIdCommandSpecificResponse };
 
     CHIP_ERROR err = basicCommandPathRegistry.Add(requestCommandPath1, std::make_optional<uint16_t>(static_cast<uint16_t>(1)));
-    NL_TEST_ASSERT(apSuite, err == CHIP_NO_ERROR);
+    EXPECT_EQ(err, CHIP_NO_ERROR);
     err = basicCommandPathRegistry.Add(requestCommandPath2, std::make_optional<uint16_t>(static_cast<uint16_t>(2)));
-    NL_TEST_ASSERT(apSuite, err == CHIP_NO_ERROR);
+    EXPECT_EQ(err, CHIP_NO_ERROR);
 
     err = commandHandler.AllocateBuffer();
-    NL_TEST_ASSERT(apSuite, err == CHIP_NO_ERROR);
+    EXPECT_EQ(err, CHIP_NO_ERROR);
     uint32_t remainingSizeBefore = commandHandler.mInvokeResponseBuilder.GetWriter()->GetRemainingFreeLength();
 
     // When ForcedSizeBuffer exceeds 255, an extra byte is needed for length, affecting the overhead size required by
     // AddResponseData. In order to have this accounted for in overhead calculation we set the length to be 256.
     uint32_t sizeOfForcedSizeBuffer = aBufferSizeHint == ForcedSizeBufferLengthHint::kSizeGreaterThan255 ? 256 : 0;
     err                             = commandHandler.AddResponseData(aRequestCommandPath, ForcedSizeBuffer(sizeOfForcedSizeBuffer));
-    NL_TEST_ASSERT(apSuite, err == CHIP_NO_ERROR);
+    EXPECT_EQ(err, CHIP_NO_ERROR);
     uint32_t remainingSizeAfter = commandHandler.mInvokeResponseBuilder.GetWriter()->GetRemainingFreeLength();
     uint32_t delta              = remainingSizeBefore - remainingSizeAfter - sizeOfForcedSizeBuffer;
 
     return delta;
 }
 
-void TestCommandInteraction::FillCurrentInvokeResponseBuffer(nlTestSuite * apSuite, CommandHandler * apCommandHandler,
+void TestCommandInteraction::FillCurrentInvokeResponseBuffer(CommandHandler * apCommandHandler,
                                                              const ConcreteCommandPath & aRequestCommandPath,
                                                              uint32_t aSizeToLeaveInBuffer)
 {
     CHIP_ERROR err = CHIP_NO_ERROR;
 
     err = apCommandHandler->AllocateBuffer();
-    NL_TEST_ASSERT(apSuite, err == CHIP_NO_ERROR);
+    EXPECT_EQ(err, CHIP_NO_ERROR);
     uint32_t remainingSize = apCommandHandler->mInvokeResponseBuilder.GetWriter()->GetRemainingFreeLength();
 
     // AddResponseData's overhead calculation depends on the size of ForcedSizeBuffer. If the buffer exceeds 255 bytes, an extra
     // length byte is required. Since tests using FillCurrentInvokeResponseBuffer currently end up with sizeToFill > 255, we
     // inform the calculation of this expectation. Nonetheless, we also validate this assumption for correctness.
-    ForcedSizeBufferLengthHint bufferSizeHint = ForcedSizeBufferLengthHint::kSizeGreaterThan255;
-    uint32_t overheadSizeNeededForAddingResponse =
-        GetAddResponseDataOverheadSizeForPath(apSuite, aRequestCommandPath, bufferSizeHint);
-    NL_TEST_ASSERT(apSuite, remainingSize > (aSizeToLeaveInBuffer + overheadSizeNeededForAddingResponse));
+    ForcedSizeBufferLengthHint bufferSizeHint    = ForcedSizeBufferLengthHint::kSizeGreaterThan255;
+    uint32_t overheadSizeNeededForAddingResponse = GetAddResponseDataOverheadSizeForPath(aRequestCommandPath, bufferSizeHint);
+    EXPECT_GT(remainingSize, (aSizeToLeaveInBuffer + overheadSizeNeededForAddingResponse));
     uint32_t sizeToFill = remainingSize - aSizeToLeaveInBuffer - overheadSizeNeededForAddingResponse;
 
     // Validating assumption. If this fails, it means overheadSizeNeededForAddingResponse is likely too large.
-    NL_TEST_ASSERT(apSuite, sizeToFill >= 256);
+    EXPECT_GE(sizeToFill, 256U);
 
     err = apCommandHandler->AddResponseData(aRequestCommandPath, ForcedSizeBuffer(sizeToFill));
-    NL_TEST_ASSERT(apSuite, err == CHIP_NO_ERROR);
+    EXPECT_EQ(err, CHIP_NO_ERROR);
 }
 
-void TestCommandInteraction::TestCommandSenderWithWrongState(nlTestSuite * apSuite, void * apContext)
+TEST_F(TestCommandInteraction, TestCommandSenderWithWrongState)
 {
-    TestContext & ctx = *static_cast<TestContext *>(apContext);
-    CHIP_ERROR err    = CHIP_NO_ERROR;
-
-    app::CommandSender commandSender(&mockCommandSenderDelegate, &ctx.GetExchangeManager());
-    NL_TEST_ASSERT(apSuite, err == CHIP_NO_ERROR);
-
-    err = commandSender.SendCommandRequest(ctx.GetSessionBobToAlice());
-    NL_TEST_ASSERT(apSuite, err == CHIP_ERROR_INCORRECT_STATE);
+    app::CommandSender commandSender(&mockCommandSenderDelegate, &GetExchangeManager());
+    CHIP_ERROR err = commandSender.SendCommandRequest(GetSessionBobToAlice());
+    EXPECT_EQ(err, CHIP_ERROR_INCORRECT_STATE);
 }
 
-void TestCommandInteraction::TestCommandHandlerWithWrongState(nlTestSuite * apSuite, void * apContext)
+TEST_F(TestCommandInteraction, TestCommandHandlerWithWrongState)
 {
     CHIP_ERROR err                          = CHIP_NO_ERROR;
     ConcreteCommandPath requestCommandPath  = { kTestEndpointId, kTestClusterId, kTestCommandIdNoData };
@@ -709,34 +690,31 @@ void TestCommandInteraction::TestCommandHandlerWithWrongState(nlTestSuite * apSu
 
         const CommandHandler::InvokeResponseParameters prepareParams(requestCommandPath);
         err = commandHandler.PrepareInvokeResponseCommand(responseCommandPath, prepareParams);
-        NL_TEST_ASSERT(apSuite, err == CHIP_NO_ERROR);
+        EXPECT_EQ(err, CHIP_NO_ERROR);
     }
-    NL_TEST_ASSERT(apSuite, commandHandler.mMockCommandResponder.mChunks.IsNull());
+    EXPECT_TRUE(commandHandler.mMockCommandResponder.mChunks.IsNull());
 }
 
-void TestCommandInteraction::TestCommandSenderWithSendCommand(nlTestSuite * apSuite, void * apContext)
+TEST_F_FROM_FIXTURE(TestCommandInteraction, TestCommandSenderWithSendCommand)
 {
-    TestContext & ctx = *static_cast<TestContext *>(apContext);
-    CHIP_ERROR err    = CHIP_NO_ERROR;
-
-    app::CommandSender commandSender(&mockCommandSenderDelegate, &ctx.GetExchangeManager());
+    app::CommandSender commandSender(&mockCommandSenderDelegate, &GetExchangeManager());
 
     System::PacketBufferHandle buf = System::PacketBufferHandle::New(System::PacketBuffer::kMaxSize);
 
-    AddInvokeRequestData(apSuite, apContext, &commandSender);
-    err = commandSender.SendCommandRequest(ctx.GetSessionBobToAlice());
-    NL_TEST_ASSERT(apSuite, err == CHIP_NO_ERROR);
+    AddInvokeRequestData(&commandSender);
+    CHIP_ERROR err = commandSender.SendCommandRequest(GetSessionBobToAlice());
+    EXPECT_EQ(err, CHIP_NO_ERROR);
 
-    ctx.DrainAndServiceIO();
+    DrainAndServiceIO();
 
-    GenerateInvokeResponse(apSuite, apContext, buf, kTestCommandIdWithData);
+    GenerateInvokeResponse(buf, kTestCommandIdWithData);
     bool moreChunkedMessages = false;
     err                      = commandSender.ProcessInvokeResponse(std::move(buf), moreChunkedMessages);
-    NL_TEST_ASSERT(apSuite, err == CHIP_NO_ERROR);
-    NL_TEST_ASSERT(apSuite, moreChunkedMessages == false);
+    EXPECT_EQ(err, CHIP_NO_ERROR);
+    EXPECT_EQ(moreChunkedMessages, false);
 }
 
-void TestCommandInteraction::TestCommandHandlerWithSendEmptyCommand(nlTestSuite * apSuite, void * apContext)
+TEST_F(TestCommandInteraction, TestCommandHandlerWithSendEmptyCommand)
 {
     CHIP_ERROR err                          = CHIP_NO_ERROR;
     ConcreteCommandPath requestCommandPath  = { kTestEndpointId, kTestClusterId, kTestCommandIdNoData };
@@ -752,37 +730,31 @@ void TestCommandInteraction::TestCommandHandlerWithSendEmptyCommand(nlTestSuite 
 
         const CommandHandler::InvokeResponseParameters prepareParams(requestCommandPath);
         err = commandHandler.PrepareInvokeResponseCommand(responseCommandPath, prepareParams);
-        NL_TEST_ASSERT(apSuite, err == CHIP_NO_ERROR);
+        EXPECT_EQ(err, CHIP_NO_ERROR);
         err = commandHandler.FinishCommand();
-        NL_TEST_ASSERT(apSuite, err == CHIP_NO_ERROR);
+        EXPECT_EQ(err, CHIP_NO_ERROR);
     }
-    NL_TEST_ASSERT(apSuite, !commandHandler.mMockCommandResponder.mChunks.IsNull());
+    ASSERT_FALSE(commandHandler.mMockCommandResponder.mChunks.IsNull());
 }
 
-void TestCommandInteraction::TestCommandSenderWithProcessReceivedMsg(nlTestSuite * apSuite, void * apContext)
+TEST_F_FROM_FIXTURE(TestCommandInteraction, TestCommandSenderWithProcessReceivedMsg)
 {
-    TestContext & ctx = *static_cast<TestContext *>(apContext);
-    CHIP_ERROR err    = CHIP_NO_ERROR;
-
-    app::CommandSender commandSender(&mockCommandSenderDelegate, &ctx.GetExchangeManager());
+    app::CommandSender commandSender(&mockCommandSenderDelegate, &GetExchangeManager());
 
     System::PacketBufferHandle buf = System::PacketBufferHandle::New(System::PacketBuffer::kMaxSize);
 
-    GenerateInvokeResponse(apSuite, apContext, buf, kTestCommandIdWithData);
+    GenerateInvokeResponse(buf, kTestCommandIdWithData);
     bool moreChunkedMessages = false;
-    err                      = commandSender.ProcessInvokeResponse(std::move(buf), moreChunkedMessages);
-    NL_TEST_ASSERT(apSuite, err == CHIP_NO_ERROR);
-    NL_TEST_ASSERT(apSuite, moreChunkedMessages == false);
+    CHIP_ERROR err           = commandSender.ProcessInvokeResponse(std::move(buf), moreChunkedMessages);
+    EXPECT_EQ(err, CHIP_NO_ERROR);
+    EXPECT_EQ(moreChunkedMessages, false);
 }
 
-void TestCommandInteraction::TestCommandSenderExtendableApiWithProcessReceivedMsg(nlTestSuite * apSuite, void * apContext)
+TEST_F_FROM_FIXTURE(TestCommandInteraction, TestCommandSenderExtendableApiWithProcessReceivedMsg)
 {
-    TestContext & ctx = *static_cast<TestContext *>(apContext);
-    CHIP_ERROR err    = CHIP_NO_ERROR;
-
     mockCommandSenderExtendedDelegate.ResetCounter();
     PendingResponseTrackerImpl pendingResponseTracker;
-    app::CommandSender commandSender(kCommandSenderTestOnlyMarker, &mockCommandSenderExtendedDelegate, &ctx.GetExchangeManager(),
+    app::CommandSender commandSender(kCommandSenderTestOnlyMarker, &mockCommandSenderExtendedDelegate, &GetExchangeManager(),
                                      &pendingResponseTracker);
 
     uint16_t mockCommandRef = 1;
@@ -791,30 +763,27 @@ void TestCommandInteraction::TestCommandSenderExtendableApiWithProcessReceivedMs
 
     System::PacketBufferHandle buf = System::PacketBufferHandle::New(System::PacketBuffer::kMaxSize);
 
-    GenerateInvokeResponse(apSuite, apContext, buf, kTestCommandIdWithData);
+    GenerateInvokeResponse(buf, kTestCommandIdWithData);
     bool moreChunkedMessages = false;
-    err                      = commandSender.ProcessInvokeResponse(std::move(buf), moreChunkedMessages);
-    NL_TEST_ASSERT(apSuite, err == CHIP_NO_ERROR);
-    NL_TEST_ASSERT(apSuite, moreChunkedMessages == false);
+    CHIP_ERROR err           = commandSender.ProcessInvokeResponse(std::move(buf), moreChunkedMessages);
+    EXPECT_EQ(err, CHIP_NO_ERROR);
+    EXPECT_EQ(moreChunkedMessages, false);
 
     commandSender.FlushNoCommandResponse();
 
-    NL_TEST_ASSERT(apSuite,
-                   mockCommandSenderExtendedDelegate.onResponseCalledTimes == 1 &&
-                       mockCommandSenderExtendedDelegate.onFinalCalledTimes == 0 &&
-                       mockCommandSenderExtendedDelegate.onNoResponseCalledTimes == 0 &&
-                       mockCommandSenderExtendedDelegate.onErrorCalledTimes == 0);
+    EXPECT_TRUE(mockCommandSenderExtendedDelegate.onResponseCalledTimes == 1 &&
+                mockCommandSenderExtendedDelegate.onFinalCalledTimes == 0 &&
+                mockCommandSenderExtendedDelegate.onNoResponseCalledTimes == 0 &&
+                mockCommandSenderExtendedDelegate.onErrorCalledTimes == 0);
 }
 
-void TestCommandInteraction::TestCommandSenderExtendableApiWithProcessReceivedMsgContainingInvalidCommandRef(nlTestSuite * apSuite,
-                                                                                                             void * apContext)
+TEST_F_FROM_FIXTURE(TestCommandInteraction, TestCommandSenderExtendableApiWithProcessReceivedMsgContainingInvalidCommandRef)
 {
-    TestContext & ctx = *static_cast<TestContext *>(apContext);
-    CHIP_ERROR err    = CHIP_NO_ERROR;
+    CHIP_ERROR err = CHIP_NO_ERROR;
 
     mockCommandSenderExtendedDelegate.ResetCounter();
     PendingResponseTrackerImpl pendingResponseTracker;
-    app::CommandSender commandSender(kCommandSenderTestOnlyMarker, &mockCommandSenderExtendedDelegate, &ctx.GetExchangeManager(),
+    app::CommandSender commandSender(kCommandSenderTestOnlyMarker, &mockCommandSenderExtendedDelegate, &GetExchangeManager(),
                                      &pendingResponseTracker);
 
     uint16_t mockCommandRef = 1;
@@ -824,24 +793,22 @@ void TestCommandInteraction::TestCommandSenderExtendableApiWithProcessReceivedMs
     System::PacketBufferHandle buf = System::PacketBufferHandle::New(System::PacketBuffer::kMaxSize);
 
     uint16_t invalidResponseCommandRef = 2;
-    GenerateInvokeResponse(apSuite, apContext, buf, kTestCommandIdWithData, kTestClusterId, kTestEndpointId,
+    GenerateInvokeResponse(buf, kTestCommandIdWithData, kTestClusterId, kTestEndpointId,
                            std::make_optional(invalidResponseCommandRef));
     bool moreChunkedMessages = false;
     err                      = commandSender.ProcessInvokeResponse(std::move(buf), moreChunkedMessages);
-    NL_TEST_ASSERT(apSuite, err == CHIP_ERROR_KEY_NOT_FOUND);
-    NL_TEST_ASSERT(apSuite, moreChunkedMessages == false);
+    EXPECT_EQ(err, CHIP_ERROR_KEY_NOT_FOUND);
+    EXPECT_EQ(moreChunkedMessages, false);
 
     commandSender.FlushNoCommandResponse();
 
-    NL_TEST_ASSERT(apSuite,
-                   mockCommandSenderExtendedDelegate.onResponseCalledTimes == 0 &&
-                       mockCommandSenderExtendedDelegate.onFinalCalledTimes == 0 &&
-                       mockCommandSenderExtendedDelegate.onNoResponseCalledTimes == 1 &&
-                       mockCommandSenderExtendedDelegate.onErrorCalledTimes == 0);
+    EXPECT_TRUE(mockCommandSenderExtendedDelegate.onResponseCalledTimes == 0 &&
+                mockCommandSenderExtendedDelegate.onFinalCalledTimes == 0 &&
+                mockCommandSenderExtendedDelegate.onNoResponseCalledTimes == 1 &&
+                mockCommandSenderExtendedDelegate.onErrorCalledTimes == 0);
 }
 
-void TestCommandInteraction::ValidateCommandHandlerEncodeInvokeResponseMessage(nlTestSuite * apSuite, void * apContext,
-                                                                               bool aNeedStatusCode)
+void TestCommandInteraction::ValidateCommandHandlerEncodeInvokeResponseMessage(bool aNeedStatusCode)
 {
     chip::app::ConcreteCommandPath requestCommandPath(kTestEndpointId, kTestClusterId, kTestCommandIdWithData);
     CommandHandlerWithUnrespondedCommand commandHandler(&mockCommandHandlerDelegate, requestCommandPath,
@@ -852,15 +819,15 @@ void TestCommandInteraction::ValidateCommandHandlerEncodeInvokeResponseMessage(n
         // be handle already acquired on the callers behalf.
         CommandHandler::Handle handle(&commandHandler);
 
-        AddInvokeResponseData(apSuite, apContext, &commandHandler, aNeedStatusCode);
+        AddInvokeResponseData(&commandHandler, aNeedStatusCode);
     }
-    NL_TEST_ASSERT(apSuite, !commandHandler.mMockCommandResponder.mChunks.IsNull());
+    ASSERT_FALSE(commandHandler.mMockCommandResponder.mChunks.IsNull());
 }
 
-void TestCommandInteraction::TestCommandHandlerEncodeSimpleCommandData(nlTestSuite * apSuite, void * apContext)
+TEST_F(TestCommandInteraction, TestCommandHandlerEncodeSimpleCommandData)
 {
     // Send response which has simple command data and command path
-    ValidateCommandHandlerEncodeInvokeResponseMessage(apSuite, apContext, false /*aNeedStatusCode=false*/);
+    ValidateCommandHandlerEncodeInvokeResponseMessage(false /*aNeedStatusCode=false*/);
 }
 
 struct Fields
@@ -892,7 +859,7 @@ struct BadFields
     }
 };
 
-void TestCommandInteraction::TestCommandHandlerCommandDataEncoding(nlTestSuite * apSuite, void * apContext)
+TEST_F(TestCommandInteraction, TestCommandHandlerCommandDataEncoding)
 {
     auto path               = MakeTestCommandPath();
     auto requestCommandPath = ConcreteCommandPath(path.mEndpointId, path.mClusterId, path.mCommandId);
@@ -905,10 +872,10 @@ void TestCommandInteraction::TestCommandHandlerCommandDataEncoding(nlTestSuite *
 
         commandHandler.AddResponse(requestCommandPath, Fields());
     }
-    NL_TEST_ASSERT(apSuite, !commandHandler.mMockCommandResponder.mChunks.IsNull());
+    ASSERT_FALSE(commandHandler.mMockCommandResponder.mChunks.IsNull());
 }
 
-void TestCommandInteraction::TestCommandHandlerCommandEncodeFailure(nlTestSuite * apSuite, void * apContext)
+TEST_F(TestCommandInteraction, TestCommandHandlerCommandEncodeFailure)
 {
     auto path               = MakeTestCommandPath();
     auto requestCommandPath = ConcreteCommandPath(path.mEndpointId, path.mClusterId, path.mCommandId);
@@ -921,7 +888,7 @@ void TestCommandInteraction::TestCommandHandlerCommandEncodeFailure(nlTestSuite 
 
         commandHandler.AddResponse(requestCommandPath, BadFields());
     }
-    NL_TEST_ASSERT(apSuite, !commandHandler.mMockCommandResponder.mChunks.IsNull());
+    ASSERT_FALSE(commandHandler.mMockCommandResponder.mChunks.IsNull());
 }
 
 /**
@@ -943,14 +910,14 @@ void TestCommandInteraction::TestCommandHandlerCommandEncodeFailure(nlTestSuite 
  *
  * This is a macro so we get useful line numbers on assertion failures
  */
-#define PretendWeGotReplyFromServer(aSuite, aContext, aClientExchange)                                                             \
+#define PretendWeGotReplyFromServer(aClientExchange)                                                                               \
     {                                                                                                                              \
-        Messaging::ReliableMessageMgr * localRm    = (aContext).GetExchangeManager().GetReliableMessageMgr();                      \
+        Messaging::ReliableMessageMgr * localRm    = GetExchangeManager().GetReliableMessageMgr();                                 \
         Messaging::ExchangeContext * localExchange = aClientExchange;                                                              \
-        NL_TEST_ASSERT(aSuite, localRm->TestGetCountRetransTable() == 2);                                                          \
+        EXPECT_EQ(localRm->TestGetCountRetransTable(), 2);                                                                         \
                                                                                                                                    \
         localRm->ClearRetransTable(localExchange);                                                                                 \
-        NL_TEST_ASSERT(aSuite, localRm->TestGetCountRetransTable() == 1);                                                          \
+        EXPECT_EQ(localRm->TestGetCountRetransTable(), 1);                                                                         \
                                                                                                                                    \
         localRm->EnumerateRetransTable([localExchange](auto * entry) {                                                             \
             localExchange->SetPendingPeerAckMessageCounter(entry->retainedBuf.GetMessageCounter());                                \
@@ -960,316 +927,302 @@ void TestCommandInteraction::TestCommandHandlerCommandEncodeFailure(nlTestSuite 
 
 // Command Sender sends invoke request, command handler drops invoke response, then test injects status response message with
 // busy to client, client sends out a status response with invalid action.
-void TestCommandInteraction::TestCommandInvalidMessage1(nlTestSuite * apSuite, void * apContext)
+TEST_F_FROM_FIXTURE(TestCommandInteraction, TestCommandInvalidMessage1)
 {
-    TestContext & ctx = *static_cast<TestContext *>(apContext);
-    CHIP_ERROR err    = CHIP_NO_ERROR;
+    CHIP_ERROR err = CHIP_NO_ERROR;
     mockCommandSenderDelegate.ResetCounter();
-    app::CommandSender commandSender(&mockCommandSenderDelegate, &ctx.GetExchangeManager());
+    app::CommandSender commandSender(&mockCommandSenderDelegate, &GetExchangeManager());
 
-    AddInvokeRequestData(apSuite, apContext, &commandSender);
+    AddInvokeRequestData(&commandSender);
     asyncCommand = false;
 
-    ctx.GetLoopback().mSentMessageCount                 = 0;
-    ctx.GetLoopback().mNumMessagesToDrop                = 1;
-    ctx.GetLoopback().mNumMessagesToAllowBeforeDropping = 1;
-    err                                                 = commandSender.SendCommandRequest(ctx.GetSessionBobToAlice());
-    NL_TEST_ASSERT(apSuite, err == CHIP_NO_ERROR);
-    ctx.DrainAndServiceIO();
+    GetLoopback().mSentMessageCount                 = 0;
+    GetLoopback().mNumMessagesToDrop                = 1;
+    GetLoopback().mNumMessagesToAllowBeforeDropping = 1;
+    err                                             = commandSender.SendCommandRequest(GetSessionBobToAlice());
+    EXPECT_EQ(err, CHIP_NO_ERROR);
+    DrainAndServiceIO();
 
-    NL_TEST_ASSERT(apSuite, ctx.GetLoopback().mSentMessageCount == 2);
-    NL_TEST_ASSERT(apSuite, ctx.GetLoopback().mDroppedMessageCount == 1);
+    EXPECT_EQ(GetLoopback().mSentMessageCount, 2U);
+    EXPECT_EQ(GetLoopback().mDroppedMessageCount, 1U);
 
-    NL_TEST_ASSERT(apSuite,
-                   mockCommandSenderDelegate.onResponseCalledTimes == 0 && mockCommandSenderDelegate.onFinalCalledTimes == 0 &&
-                       mockCommandSenderDelegate.onErrorCalledTimes == 0);
+    EXPECT_TRUE(mockCommandSenderDelegate.onResponseCalledTimes == 0 && mockCommandSenderDelegate.onFinalCalledTimes == 0 &&
+                mockCommandSenderDelegate.onErrorCalledTimes == 0);
 
-    NL_TEST_ASSERT(apSuite, GetNumActiveCommandResponderObjects() == 0);
+    EXPECT_EQ(GetNumActiveCommandResponderObjects(), 0U);
 
     System::PacketBufferHandle msgBuf = System::PacketBufferHandle::New(kMaxSecureSduLengthBytes);
-    NL_TEST_ASSERT(apSuite, !msgBuf.IsNull());
+    ASSERT_FALSE(msgBuf.IsNull());
     System::PacketBufferTLVWriter writer;
     writer.Init(std::move(msgBuf));
     StatusResponseMessage::Builder response;
     response.Init(&writer);
     response.Status(Protocols::InteractionModel::Status::Busy);
-    NL_TEST_ASSERT(apSuite, writer.Finalize(&msgBuf) == CHIP_NO_ERROR);
+    EXPECT_EQ(writer.Finalize(&msgBuf), CHIP_NO_ERROR);
 
     PayloadHeader payloadHeader;
     payloadHeader.SetExchangeID(0);
     payloadHeader.SetMessageType(chip::Protocols::InteractionModel::MsgType::StatusResponse);
-    Test::MessageCapturer messageLog(ctx);
+    chip::Test::MessageCapturer messageLog(*this);
     messageLog.mCaptureStandaloneAcks = false;
 
     // Since we are dropping packets, things are not getting acked.  Set up our
     // MRP state to look like what it would have looked like if the packet had
     // not gotten dropped.
-    PretendWeGotReplyFromServer(apSuite, ctx, commandSender.mExchangeCtx.Get());
+    PretendWeGotReplyFromServer(commandSender.mExchangeCtx.Get());
 
-    ctx.GetLoopback().mSentMessageCount                 = 0;
-    ctx.GetLoopback().mNumMessagesToDrop                = 0;
-    ctx.GetLoopback().mNumMessagesToAllowBeforeDropping = 0;
-    ctx.GetLoopback().mDroppedMessageCount              = 0;
+    GetLoopback().mSentMessageCount                 = 0;
+    GetLoopback().mNumMessagesToDrop                = 0;
+    GetLoopback().mNumMessagesToAllowBeforeDropping = 0;
+    GetLoopback().mDroppedMessageCount              = 0;
 
     err = commandSender.OnMessageReceived(commandSender.mExchangeCtx.Get(), payloadHeader, std::move(msgBuf));
-    NL_TEST_ASSERT(apSuite, err == CHIP_IM_GLOBAL_STATUS(Busy));
-    NL_TEST_ASSERT(apSuite, mockCommandSenderDelegate.mError == CHIP_IM_GLOBAL_STATUS(Busy));
-    NL_TEST_ASSERT(apSuite,
-                   mockCommandSenderDelegate.onResponseCalledTimes == 0 && mockCommandSenderDelegate.onFinalCalledTimes == 1 &&
-                       mockCommandSenderDelegate.onErrorCalledTimes == 1);
-    NL_TEST_ASSERT(apSuite, commandSender.GetInvokeResponseMessageCount() == 0);
+    EXPECT_EQ(err, CHIP_IM_GLOBAL_STATUS(Busy));
+    EXPECT_EQ(mockCommandSenderDelegate.mError, CHIP_IM_GLOBAL_STATUS(Busy));
+    EXPECT_TRUE(mockCommandSenderDelegate.onResponseCalledTimes == 0 && mockCommandSenderDelegate.onFinalCalledTimes == 1 &&
+                mockCommandSenderDelegate.onErrorCalledTimes == 1);
+    EXPECT_EQ(commandSender.GetInvokeResponseMessageCount(), 0U);
 
-    ctx.DrainAndServiceIO();
+    DrainAndServiceIO();
 
     // Client sent status report with invalid action, server's exchange has been closed, so all it sent is an MRP Ack
-    NL_TEST_ASSERT(apSuite, ctx.GetLoopback().mSentMessageCount == 2);
-    CheckForInvalidAction(apSuite, messageLog);
-    NL_TEST_ASSERT(apSuite, GetNumActiveCommandResponderObjects() == 0);
-    ctx.ExpireSessionAliceToBob();
-    ctx.ExpireSessionBobToAlice();
-    ctx.CreateSessionAliceToBob();
-    ctx.CreateSessionBobToAlice();
+    EXPECT_EQ(GetLoopback().mSentMessageCount, 2U);
+    CheckForInvalidAction(messageLog);
+    EXPECT_EQ(GetNumActiveCommandResponderObjects(), 0U);
+    ExpireSessionAliceToBob();
+    ExpireSessionBobToAlice();
+    CreateSessionAliceToBob();
+    CreateSessionBobToAlice();
 }
 
 // Command Sender sends invoke request, command handler drops invoke response, then test injects unknown message to client,
 // client sends out status response with invalid action.
-void TestCommandInteraction::TestCommandInvalidMessage2(nlTestSuite * apSuite, void * apContext)
+TEST_F_FROM_FIXTURE(TestCommandInteraction, TestCommandInvalidMessage2)
 {
-    TestContext & ctx = *static_cast<TestContext *>(apContext);
-    CHIP_ERROR err    = CHIP_NO_ERROR;
+    CHIP_ERROR err = CHIP_NO_ERROR;
     mockCommandSenderDelegate.ResetCounter();
-    app::CommandSender commandSender(&mockCommandSenderDelegate, &ctx.GetExchangeManager());
+    app::CommandSender commandSender(&mockCommandSenderDelegate, &GetExchangeManager());
 
-    AddInvokeRequestData(apSuite, apContext, &commandSender);
+    AddInvokeRequestData(&commandSender);
     asyncCommand = false;
 
-    ctx.GetLoopback().mSentMessageCount                 = 0;
-    ctx.GetLoopback().mNumMessagesToDrop                = 1;
-    ctx.GetLoopback().mNumMessagesToAllowBeforeDropping = 1;
-    err                                                 = commandSender.SendCommandRequest(ctx.GetSessionBobToAlice());
-    NL_TEST_ASSERT(apSuite, err == CHIP_NO_ERROR);
-    ctx.DrainAndServiceIO();
+    GetLoopback().mSentMessageCount                 = 0;
+    GetLoopback().mNumMessagesToDrop                = 1;
+    GetLoopback().mNumMessagesToAllowBeforeDropping = 1;
+    err                                             = commandSender.SendCommandRequest(GetSessionBobToAlice());
+    EXPECT_EQ(err, CHIP_NO_ERROR);
+    DrainAndServiceIO();
 
-    NL_TEST_ASSERT(apSuite, ctx.GetLoopback().mSentMessageCount == 2);
-    NL_TEST_ASSERT(apSuite, ctx.GetLoopback().mDroppedMessageCount == 1);
+    EXPECT_EQ(GetLoopback().mSentMessageCount, 2U);
+    EXPECT_EQ(GetLoopback().mDroppedMessageCount, 1U);
 
-    NL_TEST_ASSERT(apSuite,
-                   mockCommandSenderDelegate.onResponseCalledTimes == 0 && mockCommandSenderDelegate.onFinalCalledTimes == 0 &&
-                       mockCommandSenderDelegate.onErrorCalledTimes == 0);
+    EXPECT_TRUE(mockCommandSenderDelegate.onResponseCalledTimes == 0 && mockCommandSenderDelegate.onFinalCalledTimes == 0 &&
+                mockCommandSenderDelegate.onErrorCalledTimes == 0);
 
-    NL_TEST_ASSERT(apSuite, GetNumActiveCommandResponderObjects() == 0);
+    EXPECT_EQ(GetNumActiveCommandResponderObjects(), 0U);
 
     System::PacketBufferHandle msgBuf = System::PacketBufferHandle::New(kMaxSecureSduLengthBytes);
-    NL_TEST_ASSERT(apSuite, !msgBuf.IsNull());
+    ASSERT_FALSE(msgBuf.IsNull());
     System::PacketBufferTLVWriter writer;
     writer.Init(std::move(msgBuf));
     ReportDataMessage::Builder response;
     response.Init(&writer);
-    NL_TEST_ASSERT(apSuite, writer.Finalize(&msgBuf) == CHIP_NO_ERROR);
+    EXPECT_EQ(writer.Finalize(&msgBuf), CHIP_NO_ERROR);
 
     PayloadHeader payloadHeader;
     payloadHeader.SetExchangeID(0);
     payloadHeader.SetMessageType(chip::Protocols::InteractionModel::MsgType::ReportData);
-    Test::MessageCapturer messageLog(ctx);
+    chip::Test::MessageCapturer messageLog(*this);
     messageLog.mCaptureStandaloneAcks = false;
 
     // Since we are dropping packets, things are not getting acked.  Set up our
     // MRP state to look like what it would have looked like if the packet had
     // not gotten dropped.
-    PretendWeGotReplyFromServer(apSuite, ctx, commandSender.mExchangeCtx.Get());
+    PretendWeGotReplyFromServer(commandSender.mExchangeCtx.Get());
 
-    ctx.GetLoopback().mSentMessageCount                 = 0;
-    ctx.GetLoopback().mNumMessagesToDrop                = 0;
-    ctx.GetLoopback().mNumMessagesToAllowBeforeDropping = 0;
-    ctx.GetLoopback().mDroppedMessageCount              = 0;
+    GetLoopback().mSentMessageCount                 = 0;
+    GetLoopback().mNumMessagesToDrop                = 0;
+    GetLoopback().mNumMessagesToAllowBeforeDropping = 0;
+    GetLoopback().mDroppedMessageCount              = 0;
 
     err = commandSender.OnMessageReceived(commandSender.mExchangeCtx.Get(), payloadHeader, std::move(msgBuf));
-    NL_TEST_ASSERT(apSuite, err == CHIP_ERROR_INVALID_MESSAGE_TYPE);
-    NL_TEST_ASSERT(apSuite, mockCommandSenderDelegate.mError == CHIP_ERROR_INVALID_MESSAGE_TYPE);
-    NL_TEST_ASSERT(apSuite,
-                   mockCommandSenderDelegate.onResponseCalledTimes == 0 && mockCommandSenderDelegate.onFinalCalledTimes == 1 &&
-                       mockCommandSenderDelegate.onErrorCalledTimes == 1);
+    EXPECT_EQ(err, CHIP_ERROR_INVALID_MESSAGE_TYPE);
+    EXPECT_EQ(mockCommandSenderDelegate.mError, CHIP_ERROR_INVALID_MESSAGE_TYPE);
+    EXPECT_TRUE(mockCommandSenderDelegate.onResponseCalledTimes == 0 && mockCommandSenderDelegate.onFinalCalledTimes == 1 &&
+                mockCommandSenderDelegate.onErrorCalledTimes == 1);
 
-    ctx.DrainAndServiceIO();
+    DrainAndServiceIO();
 
     // Client sent status report with invalid action, server's exchange has been closed, so all it sent is an MRP Ack
-    NL_TEST_ASSERT(apSuite, ctx.GetLoopback().mSentMessageCount == 2);
-    CheckForInvalidAction(apSuite, messageLog);
-    NL_TEST_ASSERT(apSuite, GetNumActiveCommandResponderObjects() == 0);
-    ctx.ExpireSessionAliceToBob();
-    ctx.ExpireSessionBobToAlice();
-    ctx.CreateSessionAliceToBob();
-    ctx.CreateSessionBobToAlice();
+    EXPECT_EQ(GetLoopback().mSentMessageCount, 2U);
+    CheckForInvalidAction(messageLog);
+    EXPECT_EQ(GetNumActiveCommandResponderObjects(), 0U);
+    ExpireSessionAliceToBob();
+    ExpireSessionBobToAlice();
+    CreateSessionAliceToBob();
+    CreateSessionBobToAlice();
 }
 
 // Command Sender sends invoke request, command handler drops invoke response, then test injects malformed invoke response
 // message to client, client sends out status response with invalid action.
-void TestCommandInteraction::TestCommandInvalidMessage3(nlTestSuite * apSuite, void * apContext)
+TEST_F_FROM_FIXTURE(TestCommandInteraction, TestCommandInvalidMessage3)
 {
-    TestContext & ctx = *static_cast<TestContext *>(apContext);
-    CHIP_ERROR err    = CHIP_NO_ERROR;
+    CHIP_ERROR err = CHIP_NO_ERROR;
     mockCommandSenderDelegate.ResetCounter();
-    app::CommandSender commandSender(&mockCommandSenderDelegate, &ctx.GetExchangeManager());
+    app::CommandSender commandSender(&mockCommandSenderDelegate, &GetExchangeManager());
 
-    AddInvokeRequestData(apSuite, apContext, &commandSender);
+    AddInvokeRequestData(&commandSender);
     asyncCommand = false;
 
-    ctx.GetLoopback().mSentMessageCount                 = 0;
-    ctx.GetLoopback().mNumMessagesToDrop                = 1;
-    ctx.GetLoopback().mNumMessagesToAllowBeforeDropping = 1;
-    err                                                 = commandSender.SendCommandRequest(ctx.GetSessionBobToAlice());
-    NL_TEST_ASSERT(apSuite, err == CHIP_NO_ERROR);
-    ctx.DrainAndServiceIO();
+    GetLoopback().mSentMessageCount                 = 0;
+    GetLoopback().mNumMessagesToDrop                = 1;
+    GetLoopback().mNumMessagesToAllowBeforeDropping = 1;
+    err                                             = commandSender.SendCommandRequest(GetSessionBobToAlice());
+    EXPECT_EQ(err, CHIP_NO_ERROR);
+    DrainAndServiceIO();
 
-    NL_TEST_ASSERT(apSuite, ctx.GetLoopback().mSentMessageCount == 2);
-    NL_TEST_ASSERT(apSuite, ctx.GetLoopback().mDroppedMessageCount == 1);
+    EXPECT_EQ(GetLoopback().mSentMessageCount, 2U);
+    EXPECT_EQ(GetLoopback().mDroppedMessageCount, 1U);
 
-    NL_TEST_ASSERT(apSuite,
-                   mockCommandSenderDelegate.onResponseCalledTimes == 0 && mockCommandSenderDelegate.onFinalCalledTimes == 0 &&
-                       mockCommandSenderDelegate.onErrorCalledTimes == 0);
+    EXPECT_TRUE(mockCommandSenderDelegate.onResponseCalledTimes == 0 && mockCommandSenderDelegate.onFinalCalledTimes == 0 &&
+                mockCommandSenderDelegate.onErrorCalledTimes == 0);
 
-    NL_TEST_ASSERT(apSuite, GetNumActiveCommandResponderObjects() == 0);
+    EXPECT_EQ(GetNumActiveCommandResponderObjects(), 0U);
 
     System::PacketBufferHandle msgBuf = System::PacketBufferHandle::New(kMaxSecureSduLengthBytes);
-    NL_TEST_ASSERT(apSuite, !msgBuf.IsNull());
+    ASSERT_FALSE(msgBuf.IsNull());
     System::PacketBufferTLVWriter writer;
     writer.Init(std::move(msgBuf));
     InvokeResponseMessage::Builder response;
     response.Init(&writer);
-    NL_TEST_ASSERT(apSuite, writer.Finalize(&msgBuf) == CHIP_NO_ERROR);
+    EXPECT_EQ(writer.Finalize(&msgBuf), CHIP_NO_ERROR);
 
     PayloadHeader payloadHeader;
     payloadHeader.SetExchangeID(0);
     payloadHeader.SetMessageType(chip::Protocols::InteractionModel::MsgType::InvokeCommandResponse);
-    Test::MessageCapturer messageLog(ctx);
+    chip::Test::MessageCapturer messageLog(*this);
     messageLog.mCaptureStandaloneAcks = false;
 
     // Since we are dropping packets, things are not getting acked.  Set up our
     // MRP state to look like what it would have looked like if the packet had
     // not gotten dropped.
-    PretendWeGotReplyFromServer(apSuite, ctx, commandSender.mExchangeCtx.Get());
+    PretendWeGotReplyFromServer(commandSender.mExchangeCtx.Get());
 
-    ctx.GetLoopback().mSentMessageCount                 = 0;
-    ctx.GetLoopback().mNumMessagesToDrop                = 0;
-    ctx.GetLoopback().mNumMessagesToAllowBeforeDropping = 0;
-    ctx.GetLoopback().mDroppedMessageCount              = 0;
+    GetLoopback().mSentMessageCount                 = 0;
+    GetLoopback().mNumMessagesToDrop                = 0;
+    GetLoopback().mNumMessagesToAllowBeforeDropping = 0;
+    GetLoopback().mDroppedMessageCount              = 0;
 
     err = commandSender.OnMessageReceived(commandSender.mExchangeCtx.Get(), payloadHeader, std::move(msgBuf));
-    NL_TEST_ASSERT(apSuite, err == CHIP_ERROR_END_OF_TLV);
-    NL_TEST_ASSERT(apSuite, mockCommandSenderDelegate.mError == CHIP_ERROR_END_OF_TLV);
-    NL_TEST_ASSERT(apSuite,
-                   mockCommandSenderDelegate.onResponseCalledTimes == 0 && mockCommandSenderDelegate.onFinalCalledTimes == 1 &&
-                       mockCommandSenderDelegate.onErrorCalledTimes == 1);
+    EXPECT_EQ(err, CHIP_ERROR_END_OF_TLV);
+    EXPECT_EQ(mockCommandSenderDelegate.mError, CHIP_ERROR_END_OF_TLV);
+    EXPECT_TRUE(mockCommandSenderDelegate.onResponseCalledTimes == 0 && mockCommandSenderDelegate.onFinalCalledTimes == 1 &&
+                mockCommandSenderDelegate.onErrorCalledTimes == 1);
 
-    ctx.DrainAndServiceIO();
+    DrainAndServiceIO();
 
     // Client sent status report with invalid action, server's exchange has been closed, so all it sent is an MRP Ack
-    NL_TEST_ASSERT(apSuite, ctx.GetLoopback().mSentMessageCount == 2);
-    CheckForInvalidAction(apSuite, messageLog);
-    NL_TEST_ASSERT(apSuite, GetNumActiveCommandResponderObjects() == 0);
-    ctx.ExpireSessionAliceToBob();
-    ctx.ExpireSessionBobToAlice();
-    ctx.CreateSessionAliceToBob();
-    ctx.CreateSessionBobToAlice();
+    EXPECT_EQ(GetLoopback().mSentMessageCount, 2U);
+    CheckForInvalidAction(messageLog);
+    EXPECT_EQ(GetNumActiveCommandResponderObjects(), 0U);
+    ExpireSessionAliceToBob();
+    ExpireSessionBobToAlice();
+    CreateSessionAliceToBob();
+    CreateSessionBobToAlice();
 }
 
 // Command Sender sends invoke request, command handler drops invoke response, then test injects malformed status response to
 // client, client responds to the status response with invalid action.
-void TestCommandInteraction::TestCommandInvalidMessage4(nlTestSuite * apSuite, void * apContext)
+TEST_F_FROM_FIXTURE(TestCommandInteraction, TestCommandInvalidMessage4)
 {
-    TestContext & ctx = *static_cast<TestContext *>(apContext);
-    CHIP_ERROR err    = CHIP_NO_ERROR;
+    CHIP_ERROR err = CHIP_NO_ERROR;
     mockCommandSenderDelegate.ResetCounter();
-    app::CommandSender commandSender(&mockCommandSenderDelegate, &ctx.GetExchangeManager());
+    app::CommandSender commandSender(&mockCommandSenderDelegate, &GetExchangeManager());
 
-    AddInvokeRequestData(apSuite, apContext, &commandSender);
+    AddInvokeRequestData(&commandSender);
     asyncCommand = false;
 
-    ctx.GetLoopback().mSentMessageCount                 = 0;
-    ctx.GetLoopback().mNumMessagesToDrop                = 1;
-    ctx.GetLoopback().mNumMessagesToAllowBeforeDropping = 1;
-    err                                                 = commandSender.SendCommandRequest(ctx.GetSessionBobToAlice());
-    NL_TEST_ASSERT(apSuite, err == CHIP_NO_ERROR);
-    ctx.DrainAndServiceIO();
+    GetLoopback().mSentMessageCount                 = 0;
+    GetLoopback().mNumMessagesToDrop                = 1;
+    GetLoopback().mNumMessagesToAllowBeforeDropping = 1;
+    err                                             = commandSender.SendCommandRequest(GetSessionBobToAlice());
+    EXPECT_EQ(err, CHIP_NO_ERROR);
+    DrainAndServiceIO();
 
-    NL_TEST_ASSERT(apSuite, ctx.GetLoopback().mSentMessageCount == 2);
-    NL_TEST_ASSERT(apSuite, ctx.GetLoopback().mDroppedMessageCount == 1);
+    EXPECT_EQ(GetLoopback().mSentMessageCount, 2U);
+    EXPECT_EQ(GetLoopback().mDroppedMessageCount, 1U);
 
-    NL_TEST_ASSERT(apSuite,
-                   mockCommandSenderDelegate.onResponseCalledTimes == 0 && mockCommandSenderDelegate.onFinalCalledTimes == 0 &&
-                       mockCommandSenderDelegate.onErrorCalledTimes == 0);
+    EXPECT_TRUE(mockCommandSenderDelegate.onResponseCalledTimes == 0 && mockCommandSenderDelegate.onFinalCalledTimes == 0 &&
+                mockCommandSenderDelegate.onErrorCalledTimes == 0);
 
-    NL_TEST_ASSERT(apSuite, GetNumActiveCommandResponderObjects() == 0);
+    EXPECT_EQ(GetNumActiveCommandResponderObjects(), 0U);
 
     System::PacketBufferHandle msgBuf = System::PacketBufferHandle::New(kMaxSecureSduLengthBytes);
-    NL_TEST_ASSERT(apSuite, !msgBuf.IsNull());
+    ASSERT_FALSE(msgBuf.IsNull());
     System::PacketBufferTLVWriter writer;
     writer.Init(std::move(msgBuf));
     StatusResponseMessage::Builder response;
     response.Init(&writer);
-    NL_TEST_ASSERT(apSuite, writer.Finalize(&msgBuf) == CHIP_NO_ERROR);
+    EXPECT_EQ(writer.Finalize(&msgBuf), CHIP_NO_ERROR);
 
     PayloadHeader payloadHeader;
     payloadHeader.SetExchangeID(0);
     payloadHeader.SetMessageType(chip::Protocols::InteractionModel::MsgType::StatusResponse);
-    Test::MessageCapturer messageLog(ctx);
+    chip::Test::MessageCapturer messageLog(*this);
     messageLog.mCaptureStandaloneAcks = false;
 
     // Since we are dropping packets, things are not getting acked.  Set up our
     // MRP state to look like what it would have looked like if the packet had
     // not gotten dropped.
-    PretendWeGotReplyFromServer(apSuite, ctx, commandSender.mExchangeCtx.Get());
+    PretendWeGotReplyFromServer(commandSender.mExchangeCtx.Get());
 
-    ctx.GetLoopback().mSentMessageCount                 = 0;
-    ctx.GetLoopback().mNumMessagesToDrop                = 0;
-    ctx.GetLoopback().mNumMessagesToAllowBeforeDropping = 0;
-    ctx.GetLoopback().mDroppedMessageCount              = 0;
+    GetLoopback().mSentMessageCount                 = 0;
+    GetLoopback().mNumMessagesToDrop                = 0;
+    GetLoopback().mNumMessagesToAllowBeforeDropping = 0;
+    GetLoopback().mDroppedMessageCount              = 0;
 
     err = commandSender.OnMessageReceived(commandSender.mExchangeCtx.Get(), payloadHeader, std::move(msgBuf));
-    NL_TEST_ASSERT(apSuite, err == CHIP_ERROR_END_OF_TLV);
-    NL_TEST_ASSERT(apSuite, mockCommandSenderDelegate.mError == CHIP_ERROR_END_OF_TLV);
-    NL_TEST_ASSERT(apSuite,
-                   mockCommandSenderDelegate.onResponseCalledTimes == 0 && mockCommandSenderDelegate.onFinalCalledTimes == 1 &&
-                       mockCommandSenderDelegate.onErrorCalledTimes == 1);
+    EXPECT_EQ(err, CHIP_ERROR_END_OF_TLV);
+    EXPECT_EQ(mockCommandSenderDelegate.mError, CHIP_ERROR_END_OF_TLV);
+    EXPECT_TRUE(mockCommandSenderDelegate.onResponseCalledTimes == 0 && mockCommandSenderDelegate.onFinalCalledTimes == 1 &&
+                mockCommandSenderDelegate.onErrorCalledTimes == 1);
 
-    ctx.DrainAndServiceIO();
+    DrainAndServiceIO();
 
     // Client sent status report with invalid action, server's exchange has been closed, so all it sent is an MRP Ack
-    NL_TEST_ASSERT(apSuite, ctx.GetLoopback().mSentMessageCount == 2);
-    CheckForInvalidAction(apSuite, messageLog);
-    NL_TEST_ASSERT(apSuite, GetNumActiveCommandResponderObjects() == 0);
-    ctx.ExpireSessionAliceToBob();
-    ctx.ExpireSessionBobToAlice();
-    ctx.CreateSessionAliceToBob();
-    ctx.CreateSessionBobToAlice();
+    EXPECT_EQ(GetLoopback().mSentMessageCount, 2U);
+    CheckForInvalidAction(messageLog);
+    EXPECT_EQ(GetNumActiveCommandResponderObjects(), 0U);
+    ExpireSessionAliceToBob();
+    ExpireSessionBobToAlice();
+    CreateSessionAliceToBob();
+    CreateSessionBobToAlice();
 }
 
 // Command Sender sends malformed invoke request, handler fails to process it and sends status report with invalid action
-void TestCommandInteraction::TestCommandHandlerInvalidMessageSync(nlTestSuite * apSuite, void * apContext)
+TEST_F(TestCommandInteraction, TestCommandHandlerInvalidMessageSync)
 {
-    TestContext & ctx = *static_cast<TestContext *>(apContext);
-    CHIP_ERROR err    = CHIP_NO_ERROR;
+    CHIP_ERROR err = CHIP_NO_ERROR;
 
     mockCommandSenderDelegate.ResetCounter();
-    app::CommandSender commandSender(&mockCommandSenderDelegate, &ctx.GetExchangeManager());
+    app::CommandSender commandSender(&mockCommandSenderDelegate, &GetExchangeManager());
 
     chip::isCommandDispatched = false;
-    AddInvalidInvokeRequestData(apSuite, apContext, &commandSender);
-    err = commandSender.SendCommandRequest(ctx.GetSessionBobToAlice());
-    NL_TEST_ASSERT(apSuite, err == CHIP_NO_ERROR);
+    AddInvalidInvokeRequestData(&commandSender);
+    err = commandSender.SendCommandRequest(GetSessionBobToAlice());
+    EXPECT_EQ(err, CHIP_NO_ERROR);
 
-    ctx.DrainAndServiceIO();
+    DrainAndServiceIO();
 
-    NL_TEST_ASSERT(apSuite, !chip::isCommandDispatched);
-    NL_TEST_ASSERT(apSuite,
-                   mockCommandSenderDelegate.onResponseCalledTimes == 0 && mockCommandSenderDelegate.onFinalCalledTimes == 1 &&
-                       mockCommandSenderDelegate.onErrorCalledTimes == 1);
-    NL_TEST_ASSERT(apSuite, mockCommandSenderDelegate.mError == CHIP_IM_GLOBAL_STATUS(InvalidAction));
-    NL_TEST_ASSERT(apSuite, GetNumActiveCommandResponderObjects() == 0);
-    NL_TEST_ASSERT(apSuite, ctx.GetExchangeManager().GetNumActiveExchanges() == 0);
+    EXPECT_TRUE(!chip::isCommandDispatched);
+    EXPECT_TRUE(mockCommandSenderDelegate.onResponseCalledTimes == 0 && mockCommandSenderDelegate.onFinalCalledTimes == 1 &&
+                mockCommandSenderDelegate.onErrorCalledTimes == 1);
+    EXPECT_EQ(mockCommandSenderDelegate.mError, CHIP_IM_GLOBAL_STATUS(InvalidAction));
+    EXPECT_EQ(GetNumActiveCommandResponderObjects(), 0U);
+    EXPECT_EQ(GetExchangeManager().GetNumActiveExchanges(), 0U);
 }
 
-void TestCommandInteraction::TestCommandHandlerCommandEncodeExternalFailure(nlTestSuite * apSuite, void * apContext)
+TEST_F(TestCommandInteraction, TestCommandHandlerCommandEncodeExternalFailure)
 {
     CHIP_ERROR err          = CHIP_NO_ERROR;
     auto path               = MakeTestCommandPath();
@@ -1282,19 +1235,19 @@ void TestCommandInteraction::TestCommandHandlerCommandEncodeExternalFailure(nlTe
         CommandHandler::Handle handle(&commandHandler);
 
         err = commandHandler.AddResponseData(requestCommandPath, BadFields());
-        NL_TEST_ASSERT(apSuite, err != CHIP_NO_ERROR);
+        EXPECT_NE(err, CHIP_NO_ERROR);
         commandHandler.AddStatus(requestCommandPath, Protocols::InteractionModel::Status::Failure);
     }
-    NL_TEST_ASSERT(apSuite, !commandHandler.mMockCommandResponder.mChunks.IsNull());
+    ASSERT_FALSE(commandHandler.mMockCommandResponder.mChunks.IsNull());
 }
 
-void TestCommandInteraction::TestCommandHandlerEncodeSimpleStatusCode(nlTestSuite * apSuite, void * apContext)
+TEST_F(TestCommandInteraction, TestCommandHandlerEncodeSimpleStatusCode)
 {
     // Send response which has simple status code and command path
-    ValidateCommandHandlerEncodeInvokeResponseMessage(apSuite, apContext, true /*aNeedStatusCode=true*/);
+    ValidateCommandHandlerEncodeInvokeResponseMessage(true /*aNeedStatusCode=true*/);
 }
 
-void TestCommandInteraction::TestCommandHandlerWithoutResponderCallingAddStatus(nlTestSuite * apSuite, void * apContext)
+TEST_F_FROM_FIXTURE(TestCommandInteraction, TestCommandHandlerWithoutResponderCallingAddStatus)
 {
     chip::app::ConcreteCommandPath requestCommandPath(kTestEndpointId, kTestClusterId, kTestCommandIdWithData);
     CommandHandler commandHandler(&mockCommandHandlerDelegate);
@@ -1303,25 +1256,24 @@ void TestCommandInteraction::TestCommandHandlerWithoutResponderCallingAddStatus(
 
     // Since calling AddStatus is supposed to be a no-operation when there is no responder, it is
     // hard to validate. Best way is to check that we are still in an Idle state afterwards
-    NL_TEST_ASSERT(apSuite, commandHandler.TestOnlyIsInIdleState());
+    EXPECT_TRUE(commandHandler.TestOnlyIsInIdleState());
 }
 
-void TestCommandInteraction::TestCommandHandlerWithoutResponderCallingAddResponse(nlTestSuite * apSuite, void * apContext)
+TEST_F_FROM_FIXTURE(TestCommandInteraction, TestCommandHandlerWithoutResponderCallingAddResponse)
 {
     chip::app::ConcreteCommandPath requestCommandPath(kTestEndpointId, kTestClusterId, kTestCommandIdWithData);
     CommandHandler commandHandler(&mockCommandHandlerDelegate);
 
     uint32_t sizeToFill = 50; // This is an arbitrary number, we need to select a non-zero value.
     CHIP_ERROR err      = commandHandler.AddResponseData(requestCommandPath, ForcedSizeBuffer(sizeToFill));
-    NL_TEST_ASSERT(apSuite, err == CHIP_NO_ERROR);
+    EXPECT_EQ(err, CHIP_NO_ERROR);
 
     // Since calling AddResponseData is supposed to be a no-operation when there is no responder, it is
     // hard to validate. Best way is to check that we are still in an Idle state afterwards
-    NL_TEST_ASSERT(apSuite, commandHandler.TestOnlyIsInIdleState());
+    EXPECT_TRUE(commandHandler.TestOnlyIsInIdleState());
 }
 
-void TestCommandInteraction::TestCommandHandlerWithoutResponderCallingDirectPrepareFinishCommandApis(nlTestSuite * apSuite,
-                                                                                                     void * apContext)
+TEST_F_FROM_FIXTURE(TestCommandInteraction, TestCommandHandlerWithoutResponderCallingDirectPrepareFinishCommandApis)
 {
     chip::app::ConcreteCommandPath requestCommandPath(kTestEndpointId, kTestClusterId, kTestCommandIdWithData);
     CommandHandler commandHandler(&mockCommandHandlerDelegate);
@@ -1333,22 +1285,22 @@ void TestCommandInteraction::TestCommandHandlerWithoutResponderCallingDirectPrep
     const CommandHandler::InvokeResponseParameters prepareParams(requestCommandPath);
     ConcreteCommandPath responseCommandPath = { kTestEndpointId, kTestClusterId, kTestCommandIdCommandSpecificResponse };
     CHIP_ERROR err                          = commandHandler.PrepareInvokeResponseCommand(responseCommandPath, prepareParams);
-    NL_TEST_ASSERT(apSuite, err == CHIP_ERROR_INCORRECT_STATE);
+    EXPECT_EQ(err, CHIP_ERROR_INCORRECT_STATE);
 
-    NL_TEST_ASSERT(apSuite, commandHandler.GetCommandDataIBTLVWriter() == nullptr);
+    EXPECT_EQ(commandHandler.GetCommandDataIBTLVWriter(), nullptr);
 
     err = commandHandler.FinishCommand();
-    NL_TEST_ASSERT(apSuite, err == CHIP_ERROR_INCORRECT_STATE);
+    EXPECT_EQ(err, CHIP_ERROR_INCORRECT_STATE);
 
-    NL_TEST_ASSERT(apSuite, commandHandler.TestOnlyIsInIdleState());
+    EXPECT_TRUE(commandHandler.TestOnlyIsInIdleState());
 }
 
-void TestCommandInteraction::TestCommandHandlerWithOnInvokeReceivedNotExistCommand(nlTestSuite * apSuite, void * apContext)
+TEST_F(TestCommandInteraction, TestCommandHandlerWithOnInvokeReceivedNotExistCommand)
 {
     System::PacketBufferHandle commandDatabuf = System::PacketBufferHandle::New(System::PacketBuffer::kMaxSize);
     // Use some invalid endpoint / cluster / command.
-    GenerateInvokeRequest(apSuite, apContext, commandDatabuf, /* aIsTimedRequest = */ false, 0xEF /* command */,
-                          0xADBE /* cluster */, 0xDE /* endpoint */);
+    GenerateInvokeRequest(commandDatabuf, /* aIsTimedRequest = */ false, 0xEF /* command */, 0xADBE /* cluster */,
+                          0xDE /* endpoint */);
     CommandHandler commandHandler(&mockCommandHandlerDelegate);
     chip::isCommandDispatched = false;
 
@@ -1356,13 +1308,13 @@ void TestCommandInteraction::TestCommandHandlerWithOnInvokeReceivedNotExistComma
     MockCommandResponder mockCommandResponder;
     InteractionModel::Status status = commandHandler.OnInvokeCommandRequest(mockCommandResponder, std::move(commandDatabuf), false);
 
-    NL_TEST_ASSERT(apSuite, status == Protocols::InteractionModel::Status::InvalidAction);
-    NL_TEST_ASSERT(apSuite, mockCommandResponder.mChunks.IsNull());
+    EXPECT_EQ(status, Protocols::InteractionModel::Status::InvalidAction);
+    EXPECT_TRUE(mockCommandResponder.mChunks.IsNull());
     // TODO we can further validate the response is what we expected.
-    NL_TEST_ASSERT(apSuite, !chip::isCommandDispatched);
+    EXPECT_TRUE(!chip::isCommandDispatched);
 }
 
-void TestCommandInteraction::TestCommandHandlerWithOnInvokeReceivedEmptyDataMsg(nlTestSuite * apSuite, void * apContext)
+TEST_F(TestCommandInteraction, TestCommandHandlerWithOnInvokeReceivedEmptyDataMsg)
 {
     bool allBooleans[] = { true, false };
     for (auto messageIsTimed : allBooleans)
@@ -1374,78 +1326,73 @@ void TestCommandInteraction::TestCommandHandlerWithOnInvokeReceivedEmptyDataMsg(
             System::PacketBufferHandle commandDatabuf = System::PacketBufferHandle::New(System::PacketBuffer::kMaxSize);
 
             chip::isCommandDispatched = false;
-            GenerateInvokeRequest(apSuite, apContext, commandDatabuf, messageIsTimed, kTestCommandIdNoData);
+            GenerateInvokeRequest(commandDatabuf, messageIsTimed, kTestCommandIdNoData);
             MockCommandResponder mockCommandResponder;
             Protocols::InteractionModel::Status status =
                 commandHandler.OnInvokeCommandRequest(mockCommandResponder, std::move(commandDatabuf), transactionIsTimed);
 
             if (messageIsTimed != transactionIsTimed)
             {
-                NL_TEST_ASSERT(apSuite, status == Protocols::InteractionModel::Status::TimedRequestMismatch);
-                NL_TEST_ASSERT(apSuite, mockCommandResponder.mChunks.IsNull());
+                EXPECT_EQ(status, Protocols::InteractionModel::Status::TimedRequestMismatch);
+                EXPECT_TRUE(mockCommandResponder.mChunks.IsNull());
             }
             else
             {
-                NL_TEST_ASSERT(apSuite, status == Protocols::InteractionModel::Status::Success);
-                NL_TEST_ASSERT(apSuite, !mockCommandResponder.mChunks.IsNull());
+                EXPECT_EQ(status, Protocols::InteractionModel::Status::Success);
+                ASSERT_FALSE(mockCommandResponder.mChunks.IsNull());
             }
-            NL_TEST_ASSERT(apSuite, chip::isCommandDispatched == (messageIsTimed == transactionIsTimed));
+            EXPECT_EQ(chip::isCommandDispatched, (messageIsTimed == transactionIsTimed));
         }
     }
 }
 
-void TestCommandInteraction::TestCommandSenderLegacyCallbackUnsupportedCommand(nlTestSuite * apSuite, void * apContext)
+TEST_F(TestCommandInteraction, TestCommandSenderLegacyCallbackUnsupportedCommand)
 {
-    TestContext & ctx = *static_cast<TestContext *>(apContext);
-    CHIP_ERROR err    = CHIP_NO_ERROR;
+    CHIP_ERROR err = CHIP_NO_ERROR;
 
     mockCommandSenderDelegate.ResetCounter();
-    app::CommandSender commandSender(&mockCommandSenderDelegate, &ctx.GetExchangeManager());
+    app::CommandSender commandSender(&mockCommandSenderDelegate, &GetExchangeManager());
 
-    AddInvokeRequestData(apSuite, apContext, &commandSender, kTestNonExistCommandId);
-    err = commandSender.SendCommandRequest(ctx.GetSessionBobToAlice());
-    NL_TEST_ASSERT(apSuite, err == CHIP_NO_ERROR);
+    AddInvokeRequestData(&commandSender, kTestNonExistCommandId);
+    err = commandSender.SendCommandRequest(GetSessionBobToAlice());
+    EXPECT_EQ(err, CHIP_NO_ERROR);
 
-    ctx.DrainAndServiceIO();
+    DrainAndServiceIO();
 
-    NL_TEST_ASSERT(apSuite,
-                   mockCommandSenderDelegate.onResponseCalledTimes == 0 && mockCommandSenderDelegate.onFinalCalledTimes == 1 &&
-                       mockCommandSenderDelegate.onErrorCalledTimes == 1);
+    EXPECT_TRUE(mockCommandSenderDelegate.onResponseCalledTimes == 0 && mockCommandSenderDelegate.onFinalCalledTimes == 1 &&
+                mockCommandSenderDelegate.onErrorCalledTimes == 1);
 
-    NL_TEST_ASSERT(apSuite, GetNumActiveCommandResponderObjects() == 0);
-    NL_TEST_ASSERT(apSuite, ctx.GetExchangeManager().GetNumActiveExchanges() == 0);
+    EXPECT_EQ(GetNumActiveCommandResponderObjects(), 0U);
+    EXPECT_EQ(GetExchangeManager().GetNumActiveExchanges(), 0U);
 }
 
 // Because UnsupportedCommand is a path specific error we will expect it to come via on response when using Extended Path.
-void TestCommandInteraction::TestCommandSenderExtendableCallbackUnsupportedCommand(nlTestSuite * apSuite, void * apContext)
+TEST_F(TestCommandInteraction, TestCommandSenderExtendableCallbackUnsupportedCommand)
 {
-    TestContext & ctx = *static_cast<TestContext *>(apContext);
-    CHIP_ERROR err    = CHIP_NO_ERROR;
+    CHIP_ERROR err = CHIP_NO_ERROR;
 
     mockCommandSenderExtendedDelegate.ResetCounter();
-    app::CommandSender commandSender(&mockCommandSenderExtendedDelegate, &ctx.GetExchangeManager());
+    app::CommandSender commandSender(&mockCommandSenderExtendedDelegate, &GetExchangeManager());
 
-    AddInvokeRequestData(apSuite, apContext, &commandSender, kTestNonExistCommandId);
-    err = commandSender.SendCommandRequest(ctx.GetSessionBobToAlice());
-    NL_TEST_ASSERT(apSuite, err == CHIP_NO_ERROR);
+    AddInvokeRequestData(&commandSender, kTestNonExistCommandId);
+    err = commandSender.SendCommandRequest(GetSessionBobToAlice());
+    EXPECT_EQ(err, CHIP_NO_ERROR);
 
-    ctx.DrainAndServiceIO();
+    DrainAndServiceIO();
 
-    NL_TEST_ASSERT(apSuite,
-                   mockCommandSenderExtendedDelegate.onResponseCalledTimes == 1 &&
-                       mockCommandSenderExtendedDelegate.onFinalCalledTimes == 1 &&
-                       mockCommandSenderExtendedDelegate.onErrorCalledTimes == 0);
+    EXPECT_TRUE(mockCommandSenderExtendedDelegate.onResponseCalledTimes == 1 &&
+                mockCommandSenderExtendedDelegate.onFinalCalledTimes == 1 &&
+                mockCommandSenderExtendedDelegate.onErrorCalledTimes == 0);
 
-    NL_TEST_ASSERT(apSuite, GetNumActiveCommandResponderObjects() == 0);
-    NL_TEST_ASSERT(apSuite, ctx.GetExchangeManager().GetNumActiveExchanges() == 0);
+    EXPECT_EQ(GetNumActiveCommandResponderObjects(), 0U);
+    EXPECT_EQ(GetExchangeManager().GetNumActiveExchanges(), 0U);
 }
 
-void TestCommandInteraction::TestCommandSenderLegacyCallbackBuildingBatchCommandFails(nlTestSuite * apSuite, void * apContext)
+TEST_F(TestCommandInteraction, TestCommandSenderLegacyCallbackBuildingBatchCommandFails)
 {
-    TestContext & ctx = *static_cast<TestContext *>(apContext);
-    CHIP_ERROR err    = CHIP_NO_ERROR;
+    CHIP_ERROR err = CHIP_NO_ERROR;
     mockCommandSenderDelegate.ResetCounter();
-    app::CommandSender commandSender(&mockCommandSenderDelegate, &ctx.GetExchangeManager());
+    app::CommandSender commandSender(&mockCommandSenderDelegate, &GetExchangeManager());
     app::CommandSender::PrepareCommandParameters prepareCommandParams;
     app::CommandSender::FinishCommandParameters finishCommandParams;
     prepareCommandParams.SetStartDataStruct(true).SetCommandRef(0);
@@ -1454,35 +1401,33 @@ void TestCommandInteraction::TestCommandSenderLegacyCallbackBuildingBatchCommand
     CommandSender::ConfigParameters config;
     config.SetRemoteMaxPathsPerInvoke(2);
     err = commandSender.SetCommandSenderConfig(config);
-    NL_TEST_ASSERT(apSuite, err == CHIP_ERROR_UNSUPPORTED_CHIP_FEATURE);
+    EXPECT_EQ(err, CHIP_ERROR_UNSUPPORTED_CHIP_FEATURE);
     // Even though we got an error saying invalid argument we are going to attempt
     // to add two commands.
 
     auto commandPathParams = MakeTestCommandPath();
     err                    = commandSender.PrepareCommand(commandPathParams, prepareCommandParams);
-    NL_TEST_ASSERT(apSuite, err == CHIP_NO_ERROR);
+    EXPECT_EQ(err, CHIP_NO_ERROR);
     chip::TLV::TLVWriter * writer = commandSender.GetCommandDataIBTLVWriter();
     err                           = writer->PutBoolean(chip::TLV::ContextTag(1), true);
-    NL_TEST_ASSERT(apSuite, err == CHIP_NO_ERROR);
+    EXPECT_EQ(err, CHIP_NO_ERROR);
     err = commandSender.FinishCommand(finishCommandParams);
-    NL_TEST_ASSERT(apSuite, err == CHIP_NO_ERROR);
+    EXPECT_EQ(err, CHIP_NO_ERROR);
     // Preparing second command.
     prepareCommandParams.SetCommandRef(1);
     err = commandSender.PrepareCommand(commandPathParams, prepareCommandParams);
-    NL_TEST_ASSERT(apSuite, err == CHIP_ERROR_INCORRECT_STATE);
+    EXPECT_EQ(err, CHIP_ERROR_INCORRECT_STATE);
 
-    NL_TEST_ASSERT(apSuite, GetNumActiveCommandResponderObjects() == 0);
-    NL_TEST_ASSERT(apSuite, ctx.GetExchangeManager().GetNumActiveExchanges() == 0);
+    EXPECT_EQ(GetNumActiveCommandResponderObjects(), 0U);
+    EXPECT_EQ(GetExchangeManager().GetNumActiveExchanges(), 0U);
 }
 
-void TestCommandInteraction::TestCommandSenderExtendableCallbackBuildingBatchDuplicateCommandRefFails(nlTestSuite * apSuite,
-                                                                                                      void * apContext)
+TEST_F(TestCommandInteraction, TestCommandSenderExtendableCallbackBuildingBatchDuplicateCommandRefFails)
 {
-    TestContext & ctx = *static_cast<TestContext *>(apContext);
-    CHIP_ERROR err    = CHIP_NO_ERROR;
+    CHIP_ERROR err = CHIP_NO_ERROR;
     mockCommandSenderExtendedDelegate.ResetCounter();
     PendingResponseTrackerImpl pendingResponseTracker;
-    app::CommandSender commandSender(kCommandSenderTestOnlyMarker, &mockCommandSenderExtendedDelegate, &ctx.GetExchangeManager(),
+    app::CommandSender commandSender(kCommandSenderTestOnlyMarker, &mockCommandSenderExtendedDelegate, &GetExchangeManager(),
                                      &pendingResponseTracker);
     app::CommandSender::PrepareCommandParameters prepareCommandParams;
     app::CommandSender::FinishCommandParameters finishCommandParams;
@@ -1490,34 +1435,33 @@ void TestCommandInteraction::TestCommandSenderExtendableCallbackBuildingBatchDup
     CommandSender::ConfigParameters config;
     config.SetRemoteMaxPathsPerInvoke(2);
     err = commandSender.SetCommandSenderConfig(config);
-    NL_TEST_ASSERT(apSuite, err == CHIP_NO_ERROR);
+    EXPECT_EQ(err, CHIP_NO_ERROR);
 
     prepareCommandParams.SetStartDataStruct(true).SetCommandRef(0);
     finishCommandParams.SetEndDataStruct(true).SetCommandRef(0);
     auto commandPathParams = MakeTestCommandPath();
     err                    = commandSender.PrepareCommand(commandPathParams, prepareCommandParams);
-    NL_TEST_ASSERT(apSuite, err == CHIP_NO_ERROR);
+    EXPECT_EQ(err, CHIP_NO_ERROR);
     chip::TLV::TLVWriter * writer = commandSender.GetCommandDataIBTLVWriter();
     err                           = writer->PutBoolean(chip::TLV::ContextTag(1), true);
-    NL_TEST_ASSERT(apSuite, err == CHIP_NO_ERROR);
+    EXPECT_EQ(err, CHIP_NO_ERROR);
     err = commandSender.FinishCommand(finishCommandParams);
-    NL_TEST_ASSERT(apSuite, err == CHIP_NO_ERROR);
+    EXPECT_EQ(err, CHIP_NO_ERROR);
     // Preparing second command.
     prepareCommandParams.SetCommandRef(0);
     err = commandSender.PrepareCommand(commandPathParams, prepareCommandParams);
-    NL_TEST_ASSERT(apSuite, err == CHIP_ERROR_INVALID_ARGUMENT);
+    EXPECT_EQ(err, CHIP_ERROR_INVALID_ARGUMENT);
 
-    NL_TEST_ASSERT(apSuite, GetNumActiveCommandResponderObjects() == 0);
-    NL_TEST_ASSERT(apSuite, ctx.GetExchangeManager().GetNumActiveExchanges() == 0);
+    EXPECT_EQ(GetNumActiveCommandResponderObjects(), 0U);
+    EXPECT_EQ(GetExchangeManager().GetNumActiveExchanges(), 0U);
 }
 
-void TestCommandInteraction::TestCommandSenderExtendableCallbackBuildingBatchCommandSuccess(nlTestSuite * apSuite, void * apContext)
+TEST_F(TestCommandInteraction, TestCommandSenderExtendableCallbackBuildingBatchCommandSuccess)
 {
-    TestContext & ctx = *static_cast<TestContext *>(apContext);
-    CHIP_ERROR err    = CHIP_NO_ERROR;
+    CHIP_ERROR err = CHIP_NO_ERROR;
     mockCommandSenderExtendedDelegate.ResetCounter();
     PendingResponseTrackerImpl pendingResponseTracker;
-    app::CommandSender commandSender(kCommandSenderTestOnlyMarker, &mockCommandSenderExtendedDelegate, &ctx.GetExchangeManager(),
+    app::CommandSender commandSender(kCommandSenderTestOnlyMarker, &mockCommandSenderExtendedDelegate, &GetExchangeManager(),
                                      &pendingResponseTracker);
     app::CommandSender::PrepareCommandParameters prepareCommandParams;
     app::CommandSender::FinishCommandParameters finishCommandParams;
@@ -1525,7 +1469,7 @@ void TestCommandInteraction::TestCommandSenderExtendableCallbackBuildingBatchCom
     CommandSender::ConfigParameters config;
     config.SetRemoteMaxPathsPerInvoke(2);
     err = commandSender.SetCommandSenderConfig(config);
-    NL_TEST_ASSERT(apSuite, err == CHIP_NO_ERROR);
+    EXPECT_EQ(err, CHIP_NO_ERROR);
 
     // The specific values chosen here are arbitrary. This test primarily verifies that we can
     // use a larger command reference value followed by a smaller one for subsequent command.
@@ -1535,140 +1479,130 @@ void TestCommandInteraction::TestCommandSenderExtendableCallbackBuildingBatchCom
     finishCommandParams.SetEndDataStruct(true).SetCommandRef(firstCommandRef);
     auto commandPathParams = MakeTestCommandPath();
     err                    = commandSender.PrepareCommand(commandPathParams, prepareCommandParams);
-    NL_TEST_ASSERT(apSuite, err == CHIP_NO_ERROR);
+    EXPECT_EQ(err, CHIP_NO_ERROR);
     chip::TLV::TLVWriter * writer = commandSender.GetCommandDataIBTLVWriter();
     err                           = writer->PutBoolean(chip::TLV::ContextTag(1), true);
-    NL_TEST_ASSERT(apSuite, err == CHIP_NO_ERROR);
+    EXPECT_EQ(err, CHIP_NO_ERROR);
     err = commandSender.FinishCommand(finishCommandParams);
-    NL_TEST_ASSERT(apSuite, err == CHIP_NO_ERROR);
+    EXPECT_EQ(err, CHIP_NO_ERROR);
     // Preparing second command.
     prepareCommandParams.SetCommandRef(secondCommandRef);
     finishCommandParams.SetCommandRef(secondCommandRef);
     err = commandSender.PrepareCommand(commandPathParams, prepareCommandParams);
-    NL_TEST_ASSERT(apSuite, err == CHIP_NO_ERROR);
+    EXPECT_EQ(err, CHIP_NO_ERROR);
     writer = commandSender.GetCommandDataIBTLVWriter();
     err    = writer->PutBoolean(chip::TLV::ContextTag(1), true);
-    NL_TEST_ASSERT(apSuite, err == CHIP_NO_ERROR);
+    EXPECT_EQ(err, CHIP_NO_ERROR);
     err = commandSender.FinishCommand(finishCommandParams);
-    NL_TEST_ASSERT(apSuite, err == CHIP_NO_ERROR);
+    EXPECT_EQ(err, CHIP_NO_ERROR);
 
-    NL_TEST_ASSERT(apSuite, GetNumActiveCommandResponderObjects() == 0);
-    NL_TEST_ASSERT(apSuite, ctx.GetExchangeManager().GetNumActiveExchanges() == 0);
+    EXPECT_EQ(GetNumActiveCommandResponderObjects(), 0U);
+    EXPECT_EQ(GetExchangeManager().GetNumActiveExchanges(), 0U);
 }
 
-void TestCommandInteraction::TestCommandSenderCommandSuccessResponseFlow(nlTestSuite * apSuite, void * apContext)
+TEST_F(TestCommandInteraction, TestCommandSenderCommandSuccessResponseFlow)
 {
-    TestContext & ctx = *static_cast<TestContext *>(apContext);
-    CHIP_ERROR err    = CHIP_NO_ERROR;
+    CHIP_ERROR err = CHIP_NO_ERROR;
 
     mockCommandSenderDelegate.ResetCounter();
-    app::CommandSender commandSender(&mockCommandSenderDelegate, &ctx.GetExchangeManager());
+    app::CommandSender commandSender(&mockCommandSenderDelegate, &GetExchangeManager());
 
-    AddInvokeRequestData(apSuite, apContext, &commandSender);
-    err = commandSender.SendCommandRequest(ctx.GetSessionBobToAlice());
+    AddInvokeRequestData(&commandSender);
+    err = commandSender.SendCommandRequest(GetSessionBobToAlice());
 
-    NL_TEST_ASSERT(apSuite, err == CHIP_NO_ERROR);
-    NL_TEST_ASSERT(apSuite, commandSender.GetInvokeResponseMessageCount() == 0);
+    EXPECT_EQ(err, CHIP_NO_ERROR);
+    EXPECT_EQ(commandSender.GetInvokeResponseMessageCount(), 0U);
 
-    ctx.DrainAndServiceIO();
+    DrainAndServiceIO();
 
-    NL_TEST_ASSERT(apSuite,
-                   mockCommandSenderDelegate.onResponseCalledTimes == 1 && mockCommandSenderDelegate.onFinalCalledTimes == 1 &&
-                       mockCommandSenderDelegate.onErrorCalledTimes == 0);
-    NL_TEST_ASSERT(apSuite, commandSender.GetInvokeResponseMessageCount() == 1);
+    EXPECT_TRUE(mockCommandSenderDelegate.onResponseCalledTimes == 1 && mockCommandSenderDelegate.onFinalCalledTimes == 1 &&
+                mockCommandSenderDelegate.onErrorCalledTimes == 0);
+    EXPECT_EQ(commandSender.GetInvokeResponseMessageCount(), 1U);
 
-    NL_TEST_ASSERT(apSuite, GetNumActiveCommandResponderObjects() == 0);
-    NL_TEST_ASSERT(apSuite, ctx.GetExchangeManager().GetNumActiveExchanges() == 0);
+    EXPECT_EQ(GetNumActiveCommandResponderObjects(), 0U);
+    EXPECT_EQ(GetExchangeManager().GetNumActiveExchanges(), 0U);
 }
 
-void TestCommandInteraction::TestCommandSenderCommandAsyncSuccessResponseFlow(nlTestSuite * apSuite, void * apContext)
+TEST_F(TestCommandInteraction, TestCommandSenderCommandAsyncSuccessResponseFlow)
 {
-    TestContext & ctx = *static_cast<TestContext *>(apContext);
-    CHIP_ERROR err    = CHIP_NO_ERROR;
+    CHIP_ERROR err = CHIP_NO_ERROR;
 
     mockCommandSenderDelegate.ResetCounter();
-    app::CommandSender commandSender(&mockCommandSenderDelegate, &ctx.GetExchangeManager());
+    app::CommandSender commandSender(&mockCommandSenderDelegate, &GetExchangeManager());
 
-    AddInvokeRequestData(apSuite, apContext, &commandSender);
+    AddInvokeRequestData(&commandSender);
     asyncCommand = true;
-    err          = commandSender.SendCommandRequest(ctx.GetSessionBobToAlice());
+    err          = commandSender.SendCommandRequest(GetSessionBobToAlice());
 
-    NL_TEST_ASSERT(apSuite, err == CHIP_NO_ERROR);
+    EXPECT_EQ(err, CHIP_NO_ERROR);
 
-    ctx.DrainAndServiceIO();
+    DrainAndServiceIO();
 
-    NL_TEST_ASSERT(apSuite,
-                   mockCommandSenderDelegate.onResponseCalledTimes == 0 && mockCommandSenderDelegate.onFinalCalledTimes == 0 &&
-                       mockCommandSenderDelegate.onErrorCalledTimes == 0);
+    EXPECT_TRUE(mockCommandSenderDelegate.onResponseCalledTimes == 0 && mockCommandSenderDelegate.onFinalCalledTimes == 0 &&
+                mockCommandSenderDelegate.onErrorCalledTimes == 0);
 
-    NL_TEST_ASSERT(apSuite, GetNumActiveCommandResponderObjects() == 1);
-    NL_TEST_ASSERT(apSuite, ctx.GetExchangeManager().GetNumActiveExchanges() == 2);
+    EXPECT_EQ(GetNumActiveCommandResponderObjects(), 1U);
+    EXPECT_EQ(GetExchangeManager().GetNumActiveExchanges(), 2U);
 
     // Decrease CommandHandler refcount and send response
     asyncCommandHandle = nullptr;
 
-    ctx.DrainAndServiceIO();
+    DrainAndServiceIO();
 
-    NL_TEST_ASSERT(apSuite,
-                   mockCommandSenderDelegate.onResponseCalledTimes == 1 && mockCommandSenderDelegate.onFinalCalledTimes == 1 &&
-                       mockCommandSenderDelegate.onErrorCalledTimes == 0);
+    EXPECT_TRUE(mockCommandSenderDelegate.onResponseCalledTimes == 1 && mockCommandSenderDelegate.onFinalCalledTimes == 1 &&
+                mockCommandSenderDelegate.onErrorCalledTimes == 0);
 
-    NL_TEST_ASSERT(apSuite, GetNumActiveCommandResponderObjects() == 0);
-    NL_TEST_ASSERT(apSuite, ctx.GetExchangeManager().GetNumActiveExchanges() == 0);
+    EXPECT_EQ(GetNumActiveCommandResponderObjects(), 0U);
+    EXPECT_EQ(GetExchangeManager().GetNumActiveExchanges(), 0U);
 }
 
-void TestCommandInteraction::TestCommandSenderCommandSpecificResponseFlow(nlTestSuite * apSuite, void * apContext)
+TEST_F(TestCommandInteraction, TestCommandSenderCommandSpecificResponseFlow)
 {
-    TestContext & ctx = *static_cast<TestContext *>(apContext);
-    CHIP_ERROR err    = CHIP_NO_ERROR;
+    CHIP_ERROR err = CHIP_NO_ERROR;
 
     mockCommandSenderDelegate.ResetCounter();
-    app::CommandSender commandSender(&mockCommandSenderDelegate, &ctx.GetExchangeManager());
+    app::CommandSender commandSender(&mockCommandSenderDelegate, &GetExchangeManager());
 
-    AddInvokeRequestData(apSuite, apContext, &commandSender, kTestCommandIdCommandSpecificResponse);
-    err = commandSender.SendCommandRequest(ctx.GetSessionBobToAlice());
+    AddInvokeRequestData(&commandSender, kTestCommandIdCommandSpecificResponse);
+    err = commandSender.SendCommandRequest(GetSessionBobToAlice());
 
-    NL_TEST_ASSERT(apSuite, err == CHIP_NO_ERROR);
+    EXPECT_EQ(err, CHIP_NO_ERROR);
 
-    ctx.DrainAndServiceIO();
+    DrainAndServiceIO();
 
-    NL_TEST_ASSERT(apSuite,
-                   mockCommandSenderDelegate.onResponseCalledTimes == 1 && mockCommandSenderDelegate.onFinalCalledTimes == 1 &&
-                       mockCommandSenderDelegate.onErrorCalledTimes == 0);
+    EXPECT_TRUE(mockCommandSenderDelegate.onResponseCalledTimes == 1 && mockCommandSenderDelegate.onFinalCalledTimes == 1 &&
+                mockCommandSenderDelegate.onErrorCalledTimes == 0);
 
-    NL_TEST_ASSERT(apSuite, GetNumActiveCommandResponderObjects() == 0);
-    NL_TEST_ASSERT(apSuite, ctx.GetExchangeManager().GetNumActiveExchanges() == 0);
+    EXPECT_EQ(GetNumActiveCommandResponderObjects(), 0U);
+    EXPECT_EQ(GetExchangeManager().GetNumActiveExchanges(), 0U);
 }
 
-void TestCommandInteraction::TestCommandSenderCommandFailureResponseFlow(nlTestSuite * apSuite, void * apContext)
+TEST_F(TestCommandInteraction, TestCommandSenderCommandFailureResponseFlow)
 {
-    TestContext & ctx = *static_cast<TestContext *>(apContext);
-    CHIP_ERROR err    = CHIP_NO_ERROR;
+    CHIP_ERROR err = CHIP_NO_ERROR;
 
     mockCommandSenderDelegate.ResetCounter();
-    app::CommandSender commandSender(&mockCommandSenderDelegate, &ctx.GetExchangeManager());
+    app::CommandSender commandSender(&mockCommandSenderDelegate, &GetExchangeManager());
 
-    AddInvokeRequestData(apSuite, apContext, &commandSender, kTestNonExistCommandId);
-    err = commandSender.SendCommandRequest(ctx.GetSessionBobToAlice());
+    AddInvokeRequestData(&commandSender, kTestNonExistCommandId);
+    err = commandSender.SendCommandRequest(GetSessionBobToAlice());
 
-    ctx.DrainAndServiceIO();
+    DrainAndServiceIO();
 
-    NL_TEST_ASSERT(apSuite, err == CHIP_NO_ERROR);
+    EXPECT_EQ(err, CHIP_NO_ERROR);
 
-    ctx.DrainAndServiceIO();
+    DrainAndServiceIO();
 
-    NL_TEST_ASSERT(apSuite,
-                   mockCommandSenderDelegate.onResponseCalledTimes == 0 && mockCommandSenderDelegate.onFinalCalledTimes == 1 &&
-                       mockCommandSenderDelegate.onErrorCalledTimes == 1);
+    EXPECT_TRUE(mockCommandSenderDelegate.onResponseCalledTimes == 0 && mockCommandSenderDelegate.onFinalCalledTimes == 1 &&
+                mockCommandSenderDelegate.onErrorCalledTimes == 1);
 
-    NL_TEST_ASSERT(apSuite, GetNumActiveCommandResponderObjects() == 0);
-    NL_TEST_ASSERT(apSuite, ctx.GetExchangeManager().GetNumActiveExchanges() == 0);
+    EXPECT_EQ(GetNumActiveCommandResponderObjects(), 0U);
+    EXPECT_EQ(GetExchangeManager().GetNumActiveExchanges(), 0U);
 }
 
-void TestCommandInteraction::TestCommandSenderAbruptDestruction(nlTestSuite * apSuite, void * apContext)
+TEST_F(TestCommandInteraction, TestCommandSenderAbruptDestruction)
 {
-    TestContext & ctx = *static_cast<TestContext *>(apContext);
-    CHIP_ERROR err    = CHIP_NO_ERROR;
+    CHIP_ERROR err = CHIP_NO_ERROR;
 
     //
     // Don't send back a response, just keep the CommandHandler
@@ -1679,47 +1613,45 @@ void TestCommandInteraction::TestCommandSenderAbruptDestruction(nlTestSuite * ap
     mockCommandSenderDelegate.ResetCounter();
 
     {
-        app::CommandSender commandSender(&mockCommandSenderDelegate, &ctx.GetExchangeManager());
+        app::CommandSender commandSender(&mockCommandSenderDelegate, &GetExchangeManager());
 
-        AddInvokeRequestData(apSuite, apContext, &commandSender, kTestCommandIdCommandSpecificResponse);
-        err = commandSender.SendCommandRequest(ctx.GetSessionBobToAlice());
+        AddInvokeRequestData(&commandSender, kTestCommandIdCommandSpecificResponse);
+        err = commandSender.SendCommandRequest(GetSessionBobToAlice());
 
-        NL_TEST_ASSERT(apSuite, err == CHIP_NO_ERROR);
+        EXPECT_EQ(err, CHIP_NO_ERROR);
 
-        ctx.DrainAndServiceIO();
+        DrainAndServiceIO();
 
         //
         // No callbacks should be invoked yet - let's validate that.
         //
-        NL_TEST_ASSERT(apSuite,
-                       mockCommandSenderDelegate.onResponseCalledTimes == 0 && mockCommandSenderDelegate.onFinalCalledTimes == 0 &&
-                           mockCommandSenderDelegate.onErrorCalledTimes == 0);
+        EXPECT_TRUE(mockCommandSenderDelegate.onResponseCalledTimes == 0 && mockCommandSenderDelegate.onFinalCalledTimes == 0 &&
+                    mockCommandSenderDelegate.onErrorCalledTimes == 0);
 
-        NL_TEST_ASSERT(apSuite, ctx.GetExchangeManager().GetNumActiveExchanges() == 1);
+        EXPECT_EQ(GetExchangeManager().GetNumActiveExchanges(), 1U);
     }
 
     //
     // Upon the sender being destructed by the application, our exchange should get cleaned up too.
     //
-    NL_TEST_ASSERT(apSuite, ctx.GetExchangeManager().GetNumActiveExchanges() == 0);
+    EXPECT_EQ(GetExchangeManager().GetNumActiveExchanges(), 0U);
 
-    NL_TEST_ASSERT(apSuite, GetNumActiveCommandResponderObjects() == 0);
+    EXPECT_EQ(GetNumActiveCommandResponderObjects(), 0U);
 }
 
-void TestCommandInteraction::TestCommandHandlerRejectMultipleIdenticalCommands(nlTestSuite * apSuite, void * apContext)
+TEST_F(TestCommandInteraction, TestCommandHandlerRejectMultipleIdenticalCommands)
 {
-    TestContext & ctx = *static_cast<TestContext *>(apContext);
-    CHIP_ERROR err    = CHIP_NO_ERROR;
+    CHIP_ERROR err = CHIP_NO_ERROR;
 
     isCommandDispatched = false;
     mockCommandSenderExtendedDelegate.ResetCounter();
     PendingResponseTrackerImpl pendingResponseTracker;
-    app::CommandSender commandSender(kCommandSenderTestOnlyMarker, &mockCommandSenderExtendedDelegate, &ctx.GetExchangeManager(),
+    app::CommandSender commandSender(kCommandSenderTestOnlyMarker, &mockCommandSenderExtendedDelegate, &GetExchangeManager(),
                                      &pendingResponseTracker);
 
     app::CommandSender::ConfigParameters configParameters;
     configParameters.SetRemoteMaxPathsPerInvoke(2);
-    NL_TEST_ASSERT(apSuite, CHIP_NO_ERROR == commandSender.SetCommandSenderConfig(configParameters));
+    EXPECT_EQ(CHIP_NO_ERROR, commandSender.SetCommandSenderConfig(configParameters));
 
     // Command ID is not important here, since the command handler should reject the commands without handling it.
     auto commandPathParams = MakeTestCommandPath(kTestCommandIdCommandSpecificResponse);
@@ -1729,49 +1661,45 @@ void TestCommandInteraction::TestCommandHandlerRejectMultipleIdenticalCommands(n
         app::CommandSender::PrepareCommandParameters prepareCommandParams;
         prepareCommandParams.SetStartDataStruct(true);
         prepareCommandParams.SetCommandRef(i);
-        NL_TEST_ASSERT(apSuite, CHIP_NO_ERROR == commandSender.PrepareCommand(commandPathParams, prepareCommandParams));
-        NL_TEST_ASSERT(apSuite,
-                       CHIP_NO_ERROR == commandSender.GetCommandDataIBTLVWriter()->PutBoolean(chip::TLV::ContextTag(1), true));
+        EXPECT_EQ(CHIP_NO_ERROR, commandSender.PrepareCommand(commandPathParams, prepareCommandParams));
+        EXPECT_EQ(CHIP_NO_ERROR, commandSender.GetCommandDataIBTLVWriter()->PutBoolean(chip::TLV::ContextTag(1), true));
 
         app::CommandSender::FinishCommandParameters finishCommandParams;
         finishCommandParams.SetEndDataStruct(true);
         finishCommandParams.SetCommandRef(i);
-        NL_TEST_ASSERT(apSuite, CHIP_NO_ERROR == commandSender.FinishCommand(finishCommandParams));
+        EXPECT_EQ(CHIP_NO_ERROR, commandSender.FinishCommand(finishCommandParams));
     }
 
-    err = commandSender.SendCommandRequest(ctx.GetSessionBobToAlice());
+    err = commandSender.SendCommandRequest(GetSessionBobToAlice());
 
-    NL_TEST_ASSERT(apSuite, err == CHIP_NO_ERROR);
+    EXPECT_EQ(err, CHIP_NO_ERROR);
 
-    ctx.DrainAndServiceIO();
+    DrainAndServiceIO();
 
-    NL_TEST_ASSERT(apSuite,
-                   mockCommandSenderExtendedDelegate.onResponseCalledTimes == 0 &&
-                       mockCommandSenderExtendedDelegate.onFinalCalledTimes == 1 &&
-                       mockCommandSenderExtendedDelegate.onErrorCalledTimes == 1);
-    NL_TEST_ASSERT(apSuite, !chip::isCommandDispatched);
+    EXPECT_TRUE(mockCommandSenderExtendedDelegate.onResponseCalledTimes == 0 &&
+                mockCommandSenderExtendedDelegate.onFinalCalledTimes == 1 &&
+                mockCommandSenderExtendedDelegate.onErrorCalledTimes == 1);
+    EXPECT_TRUE(!chip::isCommandDispatched);
 
-    NL_TEST_ASSERT(apSuite, GetNumActiveCommandResponderObjects() == 0);
-    NL_TEST_ASSERT(apSuite, ctx.GetExchangeManager().GetNumActiveExchanges() == 0);
+    EXPECT_EQ(GetNumActiveCommandResponderObjects(), 0U);
+    EXPECT_EQ(GetExchangeManager().GetNumActiveExchanges(), 0U);
 }
 
 #if CONFIG_BUILD_FOR_HOST_UNIT_TEST
 
-void TestCommandInteraction::TestCommandHandlerRejectsMultipleCommandsWithIdenticalCommandRef(nlTestSuite * apSuite,
-                                                                                              void * apContext)
+TEST_F_FROM_FIXTURE(TestCommandInteraction, TestCommandHandlerRejectsMultipleCommandsWithIdenticalCommandRef)
 {
-    TestContext & ctx = *static_cast<TestContext *>(apContext);
-    CHIP_ERROR err    = CHIP_NO_ERROR;
+    CHIP_ERROR err = CHIP_NO_ERROR;
 
     isCommandDispatched = false;
     mockCommandSenderExtendedDelegate.ResetCounter();
     PendingResponseTrackerImpl pendingResponseTracker;
-    app::CommandSender commandSender(kCommandSenderTestOnlyMarker, &mockCommandSenderExtendedDelegate, &ctx.GetExchangeManager(),
+    app::CommandSender commandSender(kCommandSenderTestOnlyMarker, &mockCommandSenderExtendedDelegate, &GetExchangeManager(),
                                      &pendingResponseTracker);
 
     app::CommandSender::ConfigParameters configParameters;
     configParameters.SetRemoteMaxPathsPerInvoke(2);
-    NL_TEST_ASSERT(apSuite, CHIP_NO_ERROR == commandSender.SetCommandSenderConfig(configParameters));
+    EXPECT_EQ(CHIP_NO_ERROR, commandSender.SetCommandSenderConfig(configParameters));
 
     uint16_t numberOfCommandsToSend = 2;
     {
@@ -1787,16 +1715,15 @@ void TestCommandInteraction::TestCommandHandlerRejectsMultipleCommandsWithIdenti
             app::CommandSender::PrepareCommandParameters prepareCommandParams;
             prepareCommandParams.SetStartDataStruct(true);
             prepareCommandParams.SetCommandRef(i);
-            NL_TEST_ASSERT(apSuite, CHIP_NO_ERROR == commandSender.PrepareCommand(requestCommandPaths[i], prepareCommandParams));
-            NL_TEST_ASSERT(apSuite,
-                           CHIP_NO_ERROR == commandSender.GetCommandDataIBTLVWriter()->PutBoolean(chip::TLV::ContextTag(1), true));
+            EXPECT_EQ(CHIP_NO_ERROR, commandSender.PrepareCommand(requestCommandPaths[i], prepareCommandParams));
+            EXPECT_EQ(CHIP_NO_ERROR, commandSender.GetCommandDataIBTLVWriter()->PutBoolean(chip::TLV::ContextTag(1), true));
             // TODO fix this comment
             // We are taking advantage of the fact that the commandRef was set into finishCommandParams during PrepareCommand
             // But setting it to a different value here, we are overriding what it was supposed to be.
             app::CommandSender::FinishCommandParameters finishCommandParams;
             finishCommandParams.SetEndDataStruct(true);
             finishCommandParams.SetCommandRef(hardcodedCommandRef);
-            NL_TEST_ASSERT(apSuite, CHIP_NO_ERROR == commandSender.TestOnlyFinishCommand(finishCommandParams));
+            EXPECT_EQ(CHIP_NO_ERROR, commandSender.TestOnlyFinishCommand(finishCommandParams));
         }
     }
 
@@ -1808,35 +1735,33 @@ void TestCommandInteraction::TestCommandHandlerRejectsMultipleCommandsWithIdenti
     // Hackery to steal the InvokeRequest buffer from commandSender.
     System::PacketBufferHandle commandDatabuf;
     err = commandSender.Finalize(commandDatabuf);
-    NL_TEST_ASSERT(apSuite, err == CHIP_NO_ERROR);
+    EXPECT_EQ(err, CHIP_NO_ERROR);
 
     mockCommandHandlerDelegate.ResetCounter();
     commandDispatchedCount = 0;
 
     InteractionModel::Status status = commandHandler.ProcessInvokeRequest(std::move(commandDatabuf), false);
-    NL_TEST_ASSERT(apSuite, status == InteractionModel::Status::InvalidAction);
+    EXPECT_EQ(status, InteractionModel::Status::InvalidAction);
 
-    NL_TEST_ASSERT(apSuite, commandDispatchedCount == 0);
+    EXPECT_EQ(commandDispatchedCount, 0U);
 }
 
 #endif // CONFIG_BUILD_FOR_HOST_UNIT_TEST
 
-void TestCommandInteraction::TestCommandHandlerRejectMultipleCommandsWhenHandlerOnlySupportsOne(nlTestSuite * apSuite,
-                                                                                                void * apContext)
+TEST_F_FROM_FIXTURE(TestCommandInteraction, TestCommandHandlerRejectMultipleCommandsWhenHandlerOnlySupportsOne)
 {
-    TestContext & ctx = *static_cast<TestContext *>(apContext);
-    CHIP_ERROR err    = CHIP_NO_ERROR;
+    CHIP_ERROR err = CHIP_NO_ERROR;
 
     isCommandDispatched = false;
 
     mockCommandSenderExtendedDelegate.ResetCounter();
     PendingResponseTrackerImpl pendingResponseTracker;
-    app::CommandSender commandSender(kCommandSenderTestOnlyMarker, &mockCommandSenderExtendedDelegate, &ctx.GetExchangeManager(),
+    app::CommandSender commandSender(kCommandSenderTestOnlyMarker, &mockCommandSenderExtendedDelegate, &GetExchangeManager(),
                                      &pendingResponseTracker);
 
     app::CommandSender::ConfigParameters configParameters;
     configParameters.SetRemoteMaxPathsPerInvoke(2);
-    NL_TEST_ASSERT(apSuite, CHIP_NO_ERROR == commandSender.SetCommandSenderConfig(configParameters));
+    EXPECT_EQ(CHIP_NO_ERROR, commandSender.SetCommandSenderConfig(configParameters));
 
     uint16_t numberOfCommandsToSend = 2;
     {
@@ -1850,20 +1775,19 @@ void TestCommandInteraction::TestCommandHandlerRejectMultipleCommandsWhenHandler
             app::CommandSender::PrepareCommandParameters prepareCommandParams;
             prepareCommandParams.SetStartDataStruct(true);
             prepareCommandParams.SetCommandRef(i);
-            NL_TEST_ASSERT(apSuite, CHIP_NO_ERROR == commandSender.PrepareCommand(requestCommandPaths[i], prepareCommandParams));
-            NL_TEST_ASSERT(apSuite,
-                           CHIP_NO_ERROR == commandSender.GetCommandDataIBTLVWriter()->PutBoolean(chip::TLV::ContextTag(1), true));
+            EXPECT_EQ(CHIP_NO_ERROR, commandSender.PrepareCommand(requestCommandPaths[i], prepareCommandParams));
+            EXPECT_EQ(CHIP_NO_ERROR, commandSender.GetCommandDataIBTLVWriter()->PutBoolean(chip::TLV::ContextTag(1), true));
             app::CommandSender::FinishCommandParameters finishCommandParams;
             finishCommandParams.SetEndDataStruct(true);
             finishCommandParams.SetCommandRef(i);
-            NL_TEST_ASSERT(apSuite, CHIP_NO_ERROR == commandSender.FinishCommand(finishCommandParams));
+            EXPECT_EQ(CHIP_NO_ERROR, commandSender.FinishCommand(finishCommandParams));
         }
     }
 
     // Hackery to steal the InvokeRequest buffer from commandSender.
     System::PacketBufferHandle commandDatabuf;
     err = commandSender.Finalize(commandDatabuf);
-    NL_TEST_ASSERT(apSuite, err == CHIP_NO_ERROR);
+    EXPECT_EQ(err, CHIP_NO_ERROR);
 
     mockCommandHandlerDelegate.ResetCounter();
     sendResponse           = true;
@@ -1872,27 +1796,26 @@ void TestCommandInteraction::TestCommandHandlerRejectMultipleCommandsWhenHandler
     CommandHandler commandHandler(&mockCommandHandlerDelegate);
     MockCommandResponder mockCommandResponder;
     InteractionModel::Status status = commandHandler.OnInvokeCommandRequest(mockCommandResponder, std::move(commandDatabuf), false);
-    NL_TEST_ASSERT(apSuite, status == InteractionModel::Status::InvalidAction);
-    NL_TEST_ASSERT(apSuite, mockCommandResponder.mChunks.IsNull());
+    EXPECT_EQ(status, InteractionModel::Status::InvalidAction);
+    EXPECT_TRUE(mockCommandResponder.mChunks.IsNull());
 
-    NL_TEST_ASSERT(apSuite, commandDispatchedCount == 0);
+    EXPECT_EQ(commandDispatchedCount, 0U);
 }
 
-void TestCommandInteraction::TestCommandHandlerAcceptMultipleCommands(nlTestSuite * apSuite, void * apContext)
+TEST_F_FROM_FIXTURE(TestCommandInteraction, TestCommandHandlerAcceptMultipleCommands)
 {
-    TestContext & ctx = *static_cast<TestContext *>(apContext);
-    CHIP_ERROR err    = CHIP_NO_ERROR;
+    CHIP_ERROR err = CHIP_NO_ERROR;
 
     isCommandDispatched = false;
 
     mockCommandSenderExtendedDelegate.ResetCounter();
     PendingResponseTrackerImpl pendingResponseTracker;
-    app::CommandSender commandSender(kCommandSenderTestOnlyMarker, &mockCommandSenderExtendedDelegate, &ctx.GetExchangeManager(),
+    app::CommandSender commandSender(kCommandSenderTestOnlyMarker, &mockCommandSenderExtendedDelegate, &GetExchangeManager(),
                                      &pendingResponseTracker);
 
     app::CommandSender::ConfigParameters configParameters;
     configParameters.SetRemoteMaxPathsPerInvoke(2);
-    NL_TEST_ASSERT(apSuite, CHIP_NO_ERROR == commandSender.SetCommandSenderConfig(configParameters));
+    EXPECT_EQ(CHIP_NO_ERROR, commandSender.SetCommandSenderConfig(configParameters));
 
     uint16_t numberOfCommandsToSend = 2;
     {
@@ -1906,13 +1829,12 @@ void TestCommandInteraction::TestCommandHandlerAcceptMultipleCommands(nlTestSuit
             app::CommandSender::PrepareCommandParameters prepareCommandParams;
             prepareCommandParams.SetStartDataStruct(true);
             prepareCommandParams.SetCommandRef(i);
-            NL_TEST_ASSERT(apSuite, CHIP_NO_ERROR == commandSender.PrepareCommand(requestCommandPaths[i], prepareCommandParams));
-            NL_TEST_ASSERT(apSuite,
-                           CHIP_NO_ERROR == commandSender.GetCommandDataIBTLVWriter()->PutBoolean(chip::TLV::ContextTag(1), true));
+            EXPECT_EQ(CHIP_NO_ERROR, commandSender.PrepareCommand(requestCommandPaths[i], prepareCommandParams));
+            EXPECT_EQ(CHIP_NO_ERROR, commandSender.GetCommandDataIBTLVWriter()->PutBoolean(chip::TLV::ContextTag(1), true));
             app::CommandSender::FinishCommandParameters finishCommandParams;
             finishCommandParams.SetEndDataStruct(true);
             finishCommandParams.SetCommandRef(i);
-            NL_TEST_ASSERT(apSuite, CHIP_NO_ERROR == commandSender.FinishCommand(finishCommandParams));
+            EXPECT_EQ(CHIP_NO_ERROR, commandSender.FinishCommand(finishCommandParams));
         }
 
         commandSender.MoveToState(app::CommandSender::State::AddedCommand);
@@ -1926,20 +1848,19 @@ void TestCommandInteraction::TestCommandHandlerAcceptMultipleCommands(nlTestSuit
     // Hackery to steal the InvokeRequest buffer from commandSender.
     System::PacketBufferHandle commandDatabuf;
     err = commandSender.Finalize(commandDatabuf);
-    NL_TEST_ASSERT(apSuite, err == CHIP_NO_ERROR);
+    EXPECT_EQ(err, CHIP_NO_ERROR);
 
     sendResponse = true;
     mockCommandHandlerDelegate.ResetCounter();
     commandDispatchedCount = 0;
 
     InteractionModel::Status status = commandHandler.ProcessInvokeRequest(std::move(commandDatabuf), false);
-    NL_TEST_ASSERT(apSuite, status == InteractionModel::Status::Success);
+    EXPECT_EQ(status, InteractionModel::Status::Success);
 
-    NL_TEST_ASSERT(apSuite, commandDispatchedCount == 2);
+    EXPECT_EQ(commandDispatchedCount, 2U);
 }
 
-void TestCommandInteraction::TestCommandHandler_FillUpInvokeResponseMessageWhereSecondResponseIsStatusResponse(
-    nlTestSuite * apSuite, void * apContext)
+TEST_F_FROM_FIXTURE(TestCommandInteraction, TestCommandHandler_FillUpInvokeResponseMessageWhereSecondResponseIsStatusResponse)
 {
     BasicCommandPathRegistry<4> basicCommandPathRegistry;
     MockCommandResponder mockCommandResponder;
@@ -1951,24 +1872,24 @@ void TestCommandInteraction::TestCommandHandler_FillUpInvokeResponseMessageWhere
     ConcreteCommandPath requestCommandPath2          = { kTestEndpointId, kTestClusterId, kTestCommandIdCommandSpecificResponse };
 
     CHIP_ERROR err = basicCommandPathRegistry.Add(requestCommandPath1, std::make_optional<uint16_t>(static_cast<uint16_t>(1)));
-    NL_TEST_ASSERT(apSuite, err == CHIP_NO_ERROR);
+    EXPECT_EQ(err, CHIP_NO_ERROR);
     err = basicCommandPathRegistry.Add(requestCommandPath2, std::make_optional<uint16_t>(static_cast<uint16_t>(2)));
-    NL_TEST_ASSERT(apSuite, err == CHIP_NO_ERROR);
+    EXPECT_EQ(err, CHIP_NO_ERROR);
 
     uint32_t sizeToLeave = 0;
-    FillCurrentInvokeResponseBuffer(apSuite, &commandHandler, requestCommandPath1, sizeToLeave);
+    FillCurrentInvokeResponseBuffer(&commandHandler, requestCommandPath1, sizeToLeave);
     uint32_t remainingSize = commandHandler.mInvokeResponseBuilder.GetWriter()->GetRemainingFreeLength();
-    NL_TEST_ASSERT(apSuite, remainingSize == sizeToLeave);
+    EXPECT_EQ(remainingSize, sizeToLeave);
 
-    AddInvokeResponseData(apSuite, apContext, &commandHandler, /* aNeedStatusCode = */ true, kTestCommandIdCommandSpecificResponse,
+    AddInvokeResponseData(&commandHandler, /* aNeedStatusCode = */ true, kTestCommandIdCommandSpecificResponse,
                           kTestCommandIdCommandSpecificResponse);
 
     remainingSize = commandHandler.mInvokeResponseBuilder.GetWriter()->GetRemainingFreeLength();
-    NL_TEST_ASSERT(apSuite, remainingSize > sizeToLeave);
+    EXPECT_GT(remainingSize, sizeToLeave);
 }
 
-void TestCommandInteraction::TestCommandHandler_FillUpInvokeResponseMessageWhereSecondResponseIsDataResponsePrimative(
-    nlTestSuite * apSuite, void * apContext)
+TEST_F_FROM_FIXTURE(TestCommandInteraction,
+                    TestCommandHandler_FillUpInvokeResponseMessageWhereSecondResponseIsDataResponsePrimitive)
 {
     BasicCommandPathRegistry<4> basicCommandPathRegistry;
     MockCommandResponder mockCommandResponder;
@@ -1980,24 +1901,23 @@ void TestCommandInteraction::TestCommandHandler_FillUpInvokeResponseMessageWhere
     ConcreteCommandPath requestCommandPath2          = { kTestEndpointId, kTestClusterId, kTestCommandIdCommandSpecificResponse };
 
     CHIP_ERROR err = basicCommandPathRegistry.Add(requestCommandPath1, std::make_optional<uint16_t>(static_cast<uint16_t>(1)));
-    NL_TEST_ASSERT(apSuite, err == CHIP_NO_ERROR);
+    EXPECT_EQ(err, CHIP_NO_ERROR);
     err = basicCommandPathRegistry.Add(requestCommandPath2, std::make_optional<uint16_t>(static_cast<uint16_t>(2)));
-    NL_TEST_ASSERT(apSuite, err == CHIP_NO_ERROR);
+    EXPECT_EQ(err, CHIP_NO_ERROR);
 
     uint32_t sizeToLeave = 0;
-    FillCurrentInvokeResponseBuffer(apSuite, &commandHandler, requestCommandPath1, sizeToLeave);
+    FillCurrentInvokeResponseBuffer(&commandHandler, requestCommandPath1, sizeToLeave);
     uint32_t remainingSize = commandHandler.mInvokeResponseBuilder.GetWriter()->GetRemainingFreeLength();
-    NL_TEST_ASSERT(apSuite, remainingSize == sizeToLeave);
+    EXPECT_EQ(remainingSize, sizeToLeave);
 
-    AddInvokeResponseData(apSuite, apContext, &commandHandler, /* aNeedStatusCode = */ false, kTestCommandIdCommandSpecificResponse,
+    AddInvokeResponseData(&commandHandler, /* aNeedStatusCode = */ false, kTestCommandIdCommandSpecificResponse,
                           kTestCommandIdCommandSpecificResponse);
 
     remainingSize = commandHandler.mInvokeResponseBuilder.GetWriter()->GetRemainingFreeLength();
-    NL_TEST_ASSERT(apSuite, remainingSize > sizeToLeave);
+    EXPECT_GT(remainingSize, sizeToLeave);
 }
 
-void TestCommandInteraction::TestCommandHandler_FillUpInvokeResponseMessageWhereSecondResponseIsDataResponse(nlTestSuite * apSuite,
-                                                                                                             void * apContext)
+TEST_F_FROM_FIXTURE(TestCommandInteraction, TestCommandHandler_FillUpInvokeResponseMessageWhereSecondResponseIsDataResponse)
 {
     BasicCommandPathRegistry<4> basicCommandPathRegistry;
     MockCommandResponder mockCommandResponder;
@@ -2008,21 +1928,21 @@ void TestCommandInteraction::TestCommandHandler_FillUpInvokeResponseMessageWhere
     ConcreteCommandPath requestCommandPath2          = { kTestEndpointId, kTestClusterId, kTestCommandIdCommandSpecificResponse };
 
     CHIP_ERROR err = basicCommandPathRegistry.Add(requestCommandPath1, std::make_optional<uint16_t>(static_cast<uint16_t>(1)));
-    NL_TEST_ASSERT(apSuite, err == CHIP_NO_ERROR);
+    EXPECT_EQ(err, CHIP_NO_ERROR);
     err = basicCommandPathRegistry.Add(requestCommandPath2, std::make_optional<uint16_t>(static_cast<uint16_t>(2)));
-    NL_TEST_ASSERT(apSuite, err == CHIP_NO_ERROR);
+    EXPECT_EQ(err, CHIP_NO_ERROR);
 
     uint32_t sizeToLeave = 0;
-    FillCurrentInvokeResponseBuffer(apSuite, &commandHandler, requestCommandPath1, sizeToLeave);
+    FillCurrentInvokeResponseBuffer(&commandHandler, requestCommandPath1, sizeToLeave);
     uint32_t remainingSize = commandHandler.mInvokeResponseBuilder.GetWriter()->GetRemainingFreeLength();
-    NL_TEST_ASSERT(apSuite, remainingSize == sizeToLeave);
+    EXPECT_EQ(remainingSize, sizeToLeave);
 
     uint32_t sizeToFill = 50;
     err                 = commandHandler.AddResponseData(requestCommandPath2, ForcedSizeBuffer(sizeToFill));
-    NL_TEST_ASSERT(apSuite, err == CHIP_NO_ERROR);
+    EXPECT_EQ(err, CHIP_NO_ERROR);
 
     remainingSize = commandHandler.mInvokeResponseBuilder.GetWriter()->GetRemainingFreeLength();
-    NL_TEST_ASSERT(apSuite, remainingSize > sizeToLeave);
+    EXPECT_GT(remainingSize, sizeToLeave);
 }
 
 #if CONFIG_BUILD_FOR_HOST_UNIT_TEST
@@ -2030,24 +1950,23 @@ void TestCommandInteraction::TestCommandHandler_FillUpInvokeResponseMessageWhere
 // This test needs a special unit-test only API being exposed in ExchangeContext to be able to correctly simulate
 // the release of a session on the exchange.
 //
-void TestCommandInteraction::TestCommandHandlerReleaseWithExchangeClosed(nlTestSuite * apSuite, void * apContext)
+TEST_F_FROM_FIXTURE(TestCommandInteraction, TestCommandHandlerReleaseWithExchangeClosed)
 {
-    TestContext & ctx = *static_cast<TestContext *>(apContext);
-    CHIP_ERROR err    = CHIP_NO_ERROR;
+    CHIP_ERROR err = CHIP_NO_ERROR;
 
-    app::CommandSender commandSender(&mockCommandSenderDelegate, &ctx.GetExchangeManager());
+    app::CommandSender commandSender(&mockCommandSenderDelegate, &GetExchangeManager());
 
-    AddInvokeRequestData(apSuite, apContext, &commandSender);
+    AddInvokeRequestData(&commandSender);
     asyncCommandHandle = nullptr;
     asyncCommand       = true;
-    err                = commandSender.SendCommandRequest(ctx.GetSessionBobToAlice());
+    err                = commandSender.SendCommandRequest(GetSessionBobToAlice());
 
-    NL_TEST_ASSERT(apSuite, err == CHIP_NO_ERROR);
+    EXPECT_EQ(err, CHIP_NO_ERROR);
 
-    ctx.DrainAndServiceIO();
+    DrainAndServiceIO();
 
     // Verify that async command handle has been allocated
-    NL_TEST_ASSERT(apSuite, asyncCommandHandle.Get() != nullptr);
+    ASSERT_NE(asyncCommandHandle.Get(), nullptr);
 
     // Mimic closure of the exchange that would happen on a session release and verify that releasing the handle there-after
     // is handled gracefully.
@@ -2060,79 +1979,3 @@ void TestCommandInteraction::TestCommandHandlerReleaseWithExchangeClosed(nlTestS
 
 } // namespace app
 } // namespace chip
-
-namespace {
-// clang-format off
-const nlTest sTests[] =
-{
-    NL_TEST_DEF("TestCommandInvalidMessage1", chip::app::TestCommandInteraction::TestCommandInvalidMessage1),
-    NL_TEST_DEF("TestCommandInvalidMessage2", chip::app::TestCommandInteraction::TestCommandInvalidMessage2),
-    NL_TEST_DEF("TestCommandInvalidMessage3", chip::app::TestCommandInteraction::TestCommandInvalidMessage3),
-    NL_TEST_DEF("TestCommandInvalidMessage4", chip::app::TestCommandInteraction::TestCommandInvalidMessage4),
-    NL_TEST_DEF("TestCommandSenderWithWrongState", chip::app::TestCommandInteraction::TestCommandSenderWithWrongState),
-    NL_TEST_DEF("TestCommandHandlerWithWrongState", chip::app::TestCommandInteraction::TestCommandHandlerWithWrongState),
-    NL_TEST_DEF("TestCommandSenderWithSendCommand", chip::app::TestCommandInteraction::TestCommandSenderWithSendCommand),
-    NL_TEST_DEF("TestCommandHandlerWithSendEmptyCommand", chip::app::TestCommandInteraction::TestCommandHandlerWithSendEmptyCommand),
-    NL_TEST_DEF("TestCommandSenderWithProcessReceivedMsg", chip::app::TestCommandInteraction::TestCommandSenderWithProcessReceivedMsg),
-    NL_TEST_DEF("TestCommandSenderExtendableApiWithProcessReceivedMsg", chip::app::TestCommandInteraction::TestCommandSenderExtendableApiWithProcessReceivedMsg),
-    NL_TEST_DEF("TestCommandSenderExtendableApiWithProcessReceivedMsgContainingInvalidCommandRef", chip::app::TestCommandInteraction::TestCommandSenderExtendableApiWithProcessReceivedMsgContainingInvalidCommandRef),
-    NL_TEST_DEF("TestCommandHandlerEncodeSimpleCommandData", chip::app::TestCommandInteraction::TestCommandHandlerEncodeSimpleCommandData),
-    NL_TEST_DEF("TestCommandHandlerCommandDataEncoding", chip::app::TestCommandInteraction::TestCommandHandlerCommandDataEncoding),
-    NL_TEST_DEF("TestCommandHandlerCommandEncodeFailure", chip::app::TestCommandInteraction::TestCommandHandlerCommandEncodeFailure),
-    NL_TEST_DEF("TestCommandHandlerCommandEncodeExternalFailure", chip::app::TestCommandInteraction::TestCommandHandlerCommandEncodeExternalFailure),
-    NL_TEST_DEF("TestCommandHandlerEncodeSimpleStatusCode", chip::app::TestCommandInteraction::TestCommandHandlerEncodeSimpleStatusCode),
-    NL_TEST_DEF("TestCommandHandlerWithoutResponderCallingAddStatus", chip::app::TestCommandInteraction::TestCommandHandlerWithoutResponderCallingAddStatus),
-    NL_TEST_DEF("TestCommandHandlerWithoutResponderCallingAddResponse", chip::app::TestCommandInteraction::TestCommandHandlerWithoutResponderCallingAddResponse),
-    NL_TEST_DEF("TestCommandHandlerWithoutResponderCallingDirectPrepareFinishCommandApis", chip::app::TestCommandInteraction::TestCommandHandlerWithoutResponderCallingDirectPrepareFinishCommandApis),
-    NL_TEST_DEF("TestCommandHandlerWithOnInvokeReceivedNotExistCommand", chip::app::TestCommandInteraction::TestCommandHandlerWithOnInvokeReceivedNotExistCommand),
-    NL_TEST_DEF("TestCommandHandlerWithOnInvokeReceivedEmptyDataMsg", chip::app::TestCommandInteraction::TestCommandHandlerWithOnInvokeReceivedEmptyDataMsg),
-    NL_TEST_DEF("TestCommandHandlerRejectMultipleIdenticalCommands", chip::app::TestCommandInteraction::TestCommandHandlerRejectMultipleIdenticalCommands),
-#if CONFIG_BUILD_FOR_HOST_UNIT_TEST
-    NL_TEST_DEF("TestCommandHandlerRejectsMultipleCommandsWithIdenticalCommandRef", chip::app::TestCommandInteraction::TestCommandHandlerRejectsMultipleCommandsWithIdenticalCommandRef),
-#endif // CONFIG_BUILD_FOR_HOST_UNIT_TEST
-    NL_TEST_DEF("TestCommandHandlerRejectMultipleCommandsWhenHandlerOnlySupportsOne", chip::app::TestCommandInteraction::TestCommandHandlerRejectMultipleCommandsWhenHandlerOnlySupportsOne),
-    NL_TEST_DEF("TestCommandHandlerAcceptMultipleCommands", chip::app::TestCommandInteraction::TestCommandHandlerAcceptMultipleCommands),
-    NL_TEST_DEF("TestCommandHandler_FillUpInvokeResponseMessageWhereSecondResponseIsStatusResponse", chip::app::TestCommandInteraction::TestCommandHandler_FillUpInvokeResponseMessageWhereSecondResponseIsStatusResponse),
-    NL_TEST_DEF("TestCommandHandler_FillUpInvokeResponseMessageWhereSecondResponseIsDataResponsePrimative", chip::app::TestCommandInteraction::TestCommandHandler_FillUpInvokeResponseMessageWhereSecondResponseIsDataResponsePrimative),
-    NL_TEST_DEF("TestCommandHandler_FillUpInvokeResponseMessageWhereSecondResponseIsDataResponse", chip::app::TestCommandInteraction::TestCommandHandler_FillUpInvokeResponseMessageWhereSecondResponseIsDataResponse),
-
-
-#if CONFIG_BUILD_FOR_HOST_UNIT_TEST
-    NL_TEST_DEF("TestCommandHandlerReleaseWithExchangeClosed", chip::app::TestCommandInteraction::TestCommandHandlerReleaseWithExchangeClosed),
-#endif
-    NL_TEST_DEF("TestCommandSenderLegacyCallbackUnsupportedCommand", chip::app::TestCommandInteraction::TestCommandSenderLegacyCallbackUnsupportedCommand),
-    NL_TEST_DEF("TestCommandSenderExtendableCallbackUnsupportedCommand", chip::app::TestCommandInteraction::TestCommandSenderExtendableCallbackUnsupportedCommand),
-    NL_TEST_DEF("TestCommandSenderLegacyCallbackBuildingBatchCommandFails", chip::app::TestCommandInteraction::TestCommandSenderLegacyCallbackBuildingBatchCommandFails),
-    NL_TEST_DEF("TestCommandSenderExtendableCallbackBuildingBatchDuplicateCommandRefFails", chip::app::TestCommandInteraction::TestCommandSenderExtendableCallbackBuildingBatchDuplicateCommandRefFails),
-    NL_TEST_DEF("TestCommandSenderExtendableCallbackBuildingBatchCommandSuccess", chip::app::TestCommandInteraction::TestCommandSenderExtendableCallbackBuildingBatchCommandSuccess),
-    NL_TEST_DEF("TestCommandSenderCommandSuccessResponseFlow", chip::app::TestCommandInteraction::TestCommandSenderCommandSuccessResponseFlow),
-    NL_TEST_DEF("TestCommandSenderCommandAsyncSuccessResponseFlow", chip::app::TestCommandInteraction::TestCommandSenderCommandAsyncSuccessResponseFlow),
-    NL_TEST_DEF("TestCommandSenderCommandSpecificResponseFlow", chip::app::TestCommandInteraction::TestCommandSenderCommandSpecificResponseFlow),
-    NL_TEST_DEF("TestCommandSenderCommandFailureResponseFlow", chip::app::TestCommandInteraction::TestCommandSenderCommandFailureResponseFlow),
-    NL_TEST_DEF("TestCommandSenderAbruptDestruction", chip::app::TestCommandInteraction::TestCommandSenderAbruptDestruction),
-    NL_TEST_DEF("TestCommandHandlerInvalidMessageSync", chip::app::TestCommandInteraction::TestCommandHandlerInvalidMessageSync),
-    NL_TEST_SENTINEL()
-};
-// clang-format on
-
-// clang-format off
-nlTestSuite sSuite =
-{
-    "TestCommandInteraction",
-    &sTests[0],
-    NL_TEST_WRAP_FUNCTION(TestContext::SetUpTestSuite),
-    NL_TEST_WRAP_FUNCTION(TestContext::TearDownTestSuite),
-    NL_TEST_WRAP_METHOD(TestContext, SetUp),
-    NL_TEST_WRAP_METHOD(TestContext, TearDown),
-};
-// clang-format on
-
-} // namespace
-
-int TestCommandInteraction()
-{
-    chip::gSuite = &sSuite;
-    return chip::ExecuteTestsWithContext<TestContext>(&sSuite);
-}
-
-CHIP_REGISTER_TEST_SUITE(TestCommandInteraction)
