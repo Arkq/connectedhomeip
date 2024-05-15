@@ -145,10 +145,9 @@ chip_test_suite("tests") {
     "TestMessageDef.cpp",
     "TestNullable.cpp",
     "TestNumericAttributeTraits.cpp",
-
-    # "TestOperationalStateClusterObjects.cpp",
-    # "TestPendingNotificationMap.cpp",
-    # "TestPendingResponseTrackerImpl.cpp",
+    "TestOperationalStateClusterObjects.cpp",
+    "TestPendingNotificationMap.cpp",
+    "TestPendingResponseTrackerImpl.cpp",
     "TestPowerSourceCluster.cpp",
 
     # "TestReadInteraction.cpp",
