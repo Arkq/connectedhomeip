@@ -154,9 +154,9 @@ chip_test_suite("tests") {
     # "TestReportingEngine.cpp",
     "TestStatusIB.cpp",
     "TestStatusResponseMessage.cpp",
+    "TestTestEventTriggerDelegate.cpp",
+    "TestTimeSyncDataProvider.cpp",
 
-    # "TestTestEventTriggerDelegate.cpp",
-    # "TestTimeSyncDataProvider.cpp",
     # "TestTimedHandler.cpp",
     # "TestWriteInteraction.cpp",
   ]
