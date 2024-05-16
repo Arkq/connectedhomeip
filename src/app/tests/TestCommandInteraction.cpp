@@ -86,20 +86,6 @@ const app::CommandSender::TestOnlyMarker kCommandSenderTestOnlyMarker;
 
 namespace app {
 
-// FIXME: To be removed when TestReadInteraction is ported
-bool IsClusterDataVersionEqual(const ConcreteClusterPath & aConcreteClusterPath, DataVersion aRequiredVersion)
-{
-    return false;
-}
-
-// FIXME: To be removed when TestReadInteraction is ported
-CHIP_ERROR ReadSingleClusterData(const Access::SubjectDescriptor & aSubjectDescriptor, bool aIsFabricFiltered,
-                                 const ConcreteReadAttributePath & aPath, AttributeReportIBs::Builder & aAttributeReports,
-                                 AttributeEncodeState * apEncoderState)
-{
-    return CHIP_NO_ERROR;
-}
-
 // FIXME: To be removed when TestWriteInteraction is ported
 const EmberAfAttributeMetadata * GetAttributeMetadata(const ConcreteAttributePath & aConcreteClusterPath)
 {
