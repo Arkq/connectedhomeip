@@ -256,6 +256,8 @@ public:
         test_name();                                                                                                               \
     }
 
+namespace {
+
 class TestEventGenerator : public chip::app::EventLoggingDelegate
 {
 public:
@@ -273,6 +275,8 @@ public:
 private:
     int32_t mStatus;
 };
+
+}; // namespace
 
 void TestReadInteraction::GenerateEvents()
 {
@@ -296,6 +300,8 @@ void TestReadInteraction::GenerateEvents()
     err = logMgmt.LogEvent(&testEventGenerator, options2, eid2);
     EXPECT_EQ(err, CHIP_NO_ERROR);
 }
+
+namespace {
 
 class MockInteractionModelApp : public chip::app::ReadClient::Callback
 {
@@ -403,6 +409,8 @@ public:
         return chip::app::InteractionModelEngine::GetInstance();
     }
 };
+
+} // namespace
 
 CHIP_ERROR ReadSingleClusterData(const Access::SubjectDescriptor & aSubjectDescriptor, bool aIsFabricFiltered,
                                  const ConcreteReadAttributePath & aPath, AttributeReportIBs::Builder & aAttributeReports,
