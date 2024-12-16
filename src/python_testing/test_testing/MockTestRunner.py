@@ -22,7 +22,7 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 from chip.clusters import Attribute
-from chip.testing.matter_testing import MatterStackState, MatterTestConfig, run_tests_no_exit
+from chip.testing.matter_testing import MatterStackState, MatterTestConfig, run_tests_no_exit_sync
 
 
 class AsyncMock(MagicMock):
@@ -75,4 +75,4 @@ class MockTestRunner():
         self.default_controller.Read = AsyncMock(return_value=read_cache)
         # This doesn't need to do anything since we are overriding the read anyway
         self.default_controller.FindOrEstablishPASESession = AsyncMock(return_value=None)
-        return run_tests_no_exit(self.test_class, self.config, hooks, self.default_controller, self.stack)
+        return run_tests_no_exit_sync(self.test_class, self.config, hooks, self.default_controller, self.stack)

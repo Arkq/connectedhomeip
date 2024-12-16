@@ -30,11 +30,11 @@ from chip.interaction_model import InteractionModelError, Status
 from MockTestRunner import AsyncMock, MockTestRunner
 
 try:
-    from chip.testing.matter_testing import MatterTestConfig, get_default_paa_trust_store, run_tests_no_exit
+    from chip.testing.matter_testing import MatterTestConfig, get_default_paa_trust_store, run_tests_no_exit_sync
 except ImportError:
     sys.path.append(os.path.abspath(
         os.path.join(os.path.dirname(__file__), '..')))
-    from chip.testing.matter_testing import MatterTestConfig, get_default_paa_trust_store, run_tests_no_exit
+    from chip.testing.matter_testing import MatterTestConfig, get_default_paa_trust_store, run_tests_no_exit_sync
 
 invoke_call_count = 0
 event_call_count = 0
@@ -137,7 +137,7 @@ class MyMock(MockTestRunner):
         self.default_controller.FindOrEstablishPASESession = AsyncMock(return_value=None)
         self.default_controller.ReadEvent = AsyncMock(return_value=[], side_effect=dynamic_event_return)
 
-        return run_tests_no_exit(self.test_class, self.config, hooks, self.default_controller, self.stack)
+        return run_tests_no_exit_sync(self.test_class, self.config, hooks, self.default_controller, self.stack)
 
 
 @click.command()

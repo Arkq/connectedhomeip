@@ -61,13 +61,13 @@ DEFAULT_CHIP_ROOT = os.path.abspath(
 try:
     from chip.testing.basic_composition import BasicCompositionTests
     from chip.testing.matter_testing import (MatterBaseTest, MatterStackState, MatterTestConfig, TestStep, async_test_body,
-                                             run_tests_no_exit)
+                                             run_tests_no_exit_sync)
 except ImportError:
     sys.path.append(os.path.abspath(
         os.path.join(os.path.dirname(__file__), '..')))
     from chip.testing.basic_composition import BasicCompositionTests
     from chip.testing.matter_testing import (MatterBaseTest, MatterStackState, MatterTestConfig, TestStep, async_test_body,
-                                             run_tests_no_exit)
+                                             run_tests_no_exit_sync)
 
 try:
     import fetch_paa_certs_from_dcl
@@ -390,7 +390,7 @@ def run_test(test_class: MatterBaseTest, tests: typing.List[str], test_config: T
     stack = test_config.get_stack()
     controller = test_config.get_controller()
     matter_config = test_config.get_config(tests)
-    ok = run_tests_no_exit(test_class, matter_config, hooks, controller, stack)
+    ok = run_tests_no_exit_sync(test_class, matter_config, hooks, controller, stack)
     if not ok:
         print(f"Test failure. Failed on step: {hooks.get_failures()}")
     return hooks.get_failures()
