@@ -2085,7 +2085,7 @@ def parse_matter_test_args(argv: Optional[List[str]] = None) -> MatterTestConfig
 
 async def async_runner_with_timeout(body, self: MatterBaseTest, *args, **kwargs):
     timeout = self.matter_test_config.timeout if self.matter_test_config.timeout is not None else self.default_timeout
-    return asyncio.wait_for(body(self, *args, **kwargs), timeout=timeout)
+    return await asyncio.wait_for(body(self, *args, **kwargs), timeout=timeout)
 
 
 def async_test_body(body):
@@ -2096,8 +2096,9 @@ def async_test_body(body):
     a asyncio-run synchronous method. This decorator does the wrapping.
     """
 
-    def async_runner(self: MatterBaseTest, *args, **kwargs):
-        return asyncio_thread_executor(body)(self, *args, **kwargs)
+    @asyncio_thread_executor
+    async def async_runner(self: MatterBaseTest, *args, **kwargs):
+        return await async_runner_with_timeout(body, self, *args, **kwargs)
 
     return async_runner
 
