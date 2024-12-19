@@ -18,6 +18,7 @@
 import argparse
 import asyncio
 import builtins
+import contextlib
 import inspect
 import json
 import logging
@@ -101,11 +102,24 @@ _GLOBAL_DATA = {}
 
 
 def asyncio_thread_executor(f):
+    """Run an async function in an event loop in a separate thread.
+
+    This decorator function blocks the current thread until the async function
+    completes. Also, it forwards any exceptions that occurred in that thread.
+    """
     @wraps(f)
     def wrapper(*args, **kwargs):
-        thread = threading.Thread(target=asyncio.run, args=(f(*args, **kwargs),))
+        def run(coroutine, q: queue.Queue):
+            try:
+                asyncio.run(coroutine)
+            except Exception as e:
+                q.put(e)
+        q = queue.Queue()
+        thread = threading.Thread(target=run, args=(f(*args, **kwargs), q))
         thread.start()
         thread.join()
+        with contextlib.suppress(queue.Empty):
+            raise q.get(block=False)
     return wrapper
 
 
